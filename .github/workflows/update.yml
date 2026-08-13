@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  update:
     name: Build Raptor OS Security Update
     runs-on: ubuntu-24.04
 
@@ -29,14 +29,19 @@ jobs:
             rsync \
             git
 
-      - name: Clean generated live-build state
+      - name: Show live-build version
+        run: |
+          lb --version
+          debootstrap --version
+
+      - name: Clean previous build
         working-directory: build
         run: |
           sudo lb clean --purge || true
 
-          rm -rf cache
-          rm -rf chroot
-          rm -rf binary
+          sudo rm -rf cache
+          sudo rm -rf chroot
+          sudo rm -rf binary
 
           rm -f config/bootstrap
           rm -f config/chroot
@@ -50,67 +55,68 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Fix Debian security repository
+      - name: Force correct Debian repositories
         working-directory: build
         run: |
-          echo "Fixing old Bookworm security suite name..."
+          mkdir -p config/includes.chroot/etc/apt
 
-          find config -type f -print0 | while IFS= read -r -d '' file; do
-            if grep -q 'bookworm/updates' "$file" 2>/dev/null; then
-              echo "Fixing: $file"
-              sed -i 's/bookworm\/updates/bookworm-security/g' "$file"
-            fi
-          done
+          cat > config/includes.chroot/etc/apt/sources.list <<'EOF'
+          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          EOF
+
+          echo "===== Raptor OS sources.list ====="
+          cat config/includes.chroot/etc/apt/sources.list
 
           echo
-          echo "Checking generated configuration..."
+          echo "===== Checking repository tree ====="
 
-          if grep -Rni 'bookworm/updates' config/; then
-            echo "ERROR: bookworm/updates is still present."
+          if grep -Rni \
+            'bookworm/updates' \
+            config/includes.chroot \
+            config/package-lists \
+            config/hooks \
+            2>/dev/null; then
+
+            echo "ERROR: invalid bookworm/updates repository found."
             exit 1
           fi
 
-          echo
-          echo "Security repository configuration:"
-          grep -Rni 'bookworm-security' config/ || true
-
-      - name: Check for Ubuntu repositories
-        working-directory: build
-        run: |
           if grep -RniE \
             'security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
-            config/; then
+            config/ \
+            2>/dev/null; then
 
-            echo "ERROR: Ubuntu configuration found."
+            echo "ERROR: Ubuntu repository configuration found."
             exit 1
           fi
-
-          echo "No Ubuntu repositories found."
 
       - name: Build Raptor OS
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Verify ISO
+      - name: Verify build
         working-directory: build
         run: |
-          ISO=$(find . -maxdepth 1 -type f -name "*.iso" -print -quit)
+          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
 
           if [ -z "$ISO" ]; then
             echo "ERROR: No ISO was produced."
             exit 1
           fi
 
-          echo "Raptor OS Security build successful."
-
+          echo "===== Raptor OS Security build successful ====="
           ls -lh "$ISO"
 
           sha256sum "$ISO" > raptor-security.sha256
 
+          echo
+          echo "===== SHA256 ====="
           cat raptor-security.sha256
 
-      - name: Upload updated OS
+      - name: Upload updated OS artifact
         uses: actions/upload-artifact@v4
         with:
           name: Raptor-OS-Security-Update
