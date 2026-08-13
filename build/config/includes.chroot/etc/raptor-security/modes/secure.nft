@@ -1,1 +1,37 @@
+#!/usr/sbin/nft -f
+# Raptor Security — SECURE mode firewall ruleset
+#
+# Baseline protection: default-deny inbound, unrestricted outbound. This is
+# the "comfortable for everyday use" posture from spec section 7 — no VPN
+# kill-switch enforcement here (kill_switch_armed will correctly report
+# "not_armed" for this mode; that's expected, not a bug).
 
+table inet raptor_security
+delete table inet raptor_security
+
+table inet raptor_security {
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        iif lo accept
+        ct state established,related accept
+        ct state invalid drop
+
+        # ICMP is useful for path MTU discovery / diagnostics, low risk
+        icmp type { echo-request, destination-unreachable, time-exceeded } accept
+        icmpv6 type { echo-request, destination-unreachable, time-exceeded,
+                       nd-neighbor-solicit, nd-neighbor-advert,
+                       nd-router-solicit, nd-router-advert } accept
+
+        # Nothing else unsolicited gets in.
+        counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
