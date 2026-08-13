@@ -14,4 +14,4 @@ lb config noauto \
     --iso-volume "RAPTOR-SECURITY" \
     --memtest none \
     --win32-loader false \
-    "${@}"
+    "$@"
