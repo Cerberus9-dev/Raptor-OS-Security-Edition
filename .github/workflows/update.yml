@@ -6,16 +6,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: raptor-security-update
+  cancel-in-progress: true
+
 jobs:
   update:
-    name: Build Raptor OS Security Update
+    name: Rebuild Raptor OS Security
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+
+          df -h
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -28,7 +43,7 @@ jobs:
             syslinux-utils \
             rsync
 
-      - name: Show versions
+      - name: Show live-build version
         run: |
           lb --version
           debootstrap --version
@@ -38,15 +53,17 @@ jobs:
         run: |
           sudo lb clean --purge || true
 
-          sudo rm -rf cache
-          sudo rm -rf chroot
-          sudo rm -rf binary
+          sudo rm -rf \
+            cache \
+            chroot \
+            binary
 
-          rm -f config/bootstrap
-          rm -f config/chroot
-          rm -f config/binary
-          rm -f config/common
-          rm -f config/source
+          sudo rm -f \
+            config/bootstrap \
+            config/chroot \
+            config/binary \
+            config/common \
+            config/source
 
       - name: Configure live-build
         working-directory: build
@@ -54,78 +71,60 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Fix generated security repository
+      - name: Verify archive configuration
         working-directory: build
         run: |
-          echo "Searching generated live-build configuration..."
+          echo "===== base.list.chroot ====="
+          cat config/archives/base.list.chroot
 
-          grep -Rni \
-            'bookworm/updates' \
+          echo
+          echo "===== security.list.chroot ====="
+          cat config/archives/security.list.chroot
+
+          echo
+          echo "===== generated config ====="
+          grep -RniE \
+            'security\.debian\.org|bookworm/updates|bookworm-security' \
             config/ \
             2>/dev/null || true
 
-          echo
-          echo "Replacing obsolete Bookworm security suite..."
-
-          find config -type f -print0 | while IFS= read -r -d '' file; do
-            if grep -q 'bookworm/updates' "$file" 2>/dev/null; then
-              echo "Fixing $file"
-              sed -i 's/bookworm\/updates/bookworm-security/g' "$file"
-            fi
-          done
-
-          echo
-          echo "Checking result..."
-
-          if grep -Rni \
-            'bookworm/updates' \
-            config/ \
-            2>/dev/null; then
-
-            echo "ERROR: bookworm/updates still exists."
-            exit 1
-          fi
-
-          echo "Security repository fixed."
-
-      - name: Verify Ubuntu repositories are absent
+      - name: Verify no obsolete security repository exists
         working-directory: build
         run: |
           if grep -RniE \
-            'security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
+            'security\.debian\.org.*bookworm/updates|security\.debian\.org bookworm/updates' \
             config/ \
             2>/dev/null; then
 
-            echo "ERROR: Ubuntu repository detected."
+            echo "ERROR: obsolete bookworm/updates security repository found."
             exit 1
           fi
 
-          echo "No Ubuntu repositories detected."
+          echo "No obsolete security repository found."
 
-      - name: Build Raptor OS
+      - name: Build updated OS
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Verify ISO
+      - name: Verify build
         working-directory: build
         run: |
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
 
           if [ -z "$ISO" ]; then
-            echo "ERROR: No ISO was generated."
+            echo "ERROR: live-build completed but no ISO was produced."
             exit 1
           fi
 
-          echo "Raptor OS Security build succeeded."
-
+          echo "Raptor OS Security update build succeeded:"
           ls -lh "$ISO"
 
           sha256sum "$ISO" > raptor-security.sha256
 
           cat raptor-security.sha256
 
-      - name: Upload update artifact
+      - name: Upload updated OS artifact
         uses: actions/upload-artifact@v4
         with:
           name: Raptor-OS-Security-Update
