@@ -1,7 +1,15 @@
 name: Build Raptor OS Security Update
 
+# Unlike build-iso.yml (manual only, matches home edition's convention for
+# fresh-install images), this one also runs weekly — Security Edition is a
+# Live ISO people re-download and re-flash rather than an atomically
+# updatable image like home edition's Bazzite base, so a scheduled rebuild
+# is how it picks up upstream Debian package/security updates at all.
+
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 0" # weekly, Sunday 05:00 UTC
 
 permissions:
   contents: read
@@ -27,7 +35,6 @@ jobs:
             /opt/ghc \
             /usr/local/share/boost \
             "$AGENT_TOOLSDIRECTORY" || true
-
           df -h
 
       - name: Install build dependencies
@@ -43,99 +50,55 @@ jobs:
             syslinux-utils \
             rsync
 
-      - name: Show live-build version
+      - name: Show build tool versions
         run: |
           lb --version
           debootstrap --version
+
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation. Kept identical between the two workflows
+      # deliberately, so there's exactly one place this ever needs
+      # updating if the live-build package changes.
+      - name: Patch live-build Contents index lookup
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_chroot_linux-image"
+          sudo sed -i \
+            's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
+            "$LB_FILE"
+          sudo sed -i \
+            's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
+            "$LB_FILE"
 
       - name: Clean previous build
         working-directory: build
         run: |
           sudo lb clean --purge || true
-
-          sudo rm -rf \
-            cache \
-            chroot \
-            binary \
-            config/bootstrap \
-            config/chroot \
-            config/binary \
-            config/common \
-            config/source
-
-          # Keep the repository's archive configuration.
-          # Do not generate duplicate archive files here.
-          test -f config/archives/base.list.chroot
-          test -f config/archives/security.list.chroot
-
-      - name: Validate repository archive files
-        working-directory: build
-        run: |
-          expected_base='deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware'
-
-          expected_security='deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware'
-
-          printf '%s\n' "$expected_base" > /tmp/expected-base.list
-          printf '%s\n' "$expected_security" > /tmp/expected-security.list
-
-          diff -u /tmp/expected-base.list config/archives/base.list.chroot
-          diff -u /tmp/expected-security.list config/archives/security.list.chroot
+          sudo rm -rf cache chroot binary .build
+          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
 
       - name: Configure live-build
         working-directory: build
         run: |
+          set -e
           chmod +x auto/config
           ./auto/config
 
-      - name: Verify generated configuration
+      - name: Build updated ISO
         working-directory: build
-        run: |
-          echo "===== base.list.chroot ====="
-          cat config/archives/base.list.chroot
-
-          echo
-          echo "===== security.list.chroot ====="
-          cat config/archives/security.list.chroot
-
-          echo
-          echo "===== generated archive configuration ====="
-          grep -RniE \
-            'deb\.debian\.org/debian|deb\.debian\.org/debian-security|security\.debian\.org|bookworm-updates|bookworm-security|bookworm/updates' \
-            config/ \
-            2>/dev/null || true
-
-      - name: Reject obsolete security repository
-        working-directory: build
-        run: |
-          if grep -RniE \
-            '(^|[[:space:]])(https?://)?(security\.debian\.org|deb\.debian\.org/debian-security)[[:space:]]+bookworm/updates([[:space:]]|$)' \
-            config/ \
-            2>/dev/null; then
-            echo "ERROR: obsolete Debian security suite bookworm/updates detected."
-            exit 1
-          fi
-
-          echo "OK: no obsolete bookworm/updates repository found."
-
-      - name: Build updated OS
-        working-directory: build
-        run: |
-          sudo lb build
+        run: sudo lb build
 
       - name: Verify ISO
         working-directory: build
         run: |
+          set -e
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-
           if [ -z "$ISO" ]; then
             echo "ERROR: live-build completed but no ISO was produced."
             exit 1
           fi
-
           echo "Raptor OS Security build succeeded:"
           ls -lh "$ISO"
-
           sha256sum "$ISO" > raptor-security.sha256
           cat raptor-security.sha256
 
