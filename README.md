@@ -12,8 +12,8 @@ Custom OS based off Debian, designed to be a security and development workstatio
 
 | | Minimum | Recommended |
 |---|---|---|
-| **CPU** | 64-bit x86_64 | AMD Ryzen / Intel 10th gen+ |
-| **RAM** | 4 GB | 8 GB+ |
+| **CPU** | 64-bit x86_64, dual-core | Quad-core (e.g. Ryzen 3000 / Intel 8th gen or newer) — noticeably smoother if you're running VMs, containers, or compiling alongside your other tools |
+| **RAM** | 4 GB (Live sessions keep filesystem writes in RAM by default, so this floor is a bit higher than an installed OS would need) | 8 GB (VMs/containers/hashcat-style workloads will want more) |
 | **USB Drive** | 8 GB | 32 GB+ (room for encrypted persistence) |
 | **Boot** | UEFI required | — |
 
