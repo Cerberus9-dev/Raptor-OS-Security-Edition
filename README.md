@@ -1,66 +1,108 @@
 # Raptor Security
+**Status: Pre-release — CI build pipeline in progress**
 
-A portable Debian Live-based security, penetration-testing, networking,
-privacy, and development workstation this is the security-focused edition of
-the Raptor OS family. Separate build/pipeline from
-[Raptor-OS](https://github.com/Cerberus9-dev/Raptor-OS) (Bazzite-based);
-see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for why and for current
-project status.
+Custom OS based off Debian, designed to be a security and development workstation without being overly bloated or complicated. The Security Edition of the Raptor OS family — boots and runs entirely from USB, keeps the Live session amnesic by default, and treats persistence as something you opt into rather than something that just happens.
 
-**Status:** seven D-Bus daemons (Mode Manager, Security Center, Emergency
-Shutdown, Persistence, VPN, Tor, Network Protection Managers) implemented
-and wired into a live-build skeleton. Zero real builds run yet — see
-`docs/ARCHITECTURE.md`'s pre-build checklist before treating any of it as
-verified beyond syntax-valid Python/shell and well-formed D-Bus policy
-XML. Most of the full spec (Software Center, guided workflows,
-Privacy/Security Monitoring managers, forensics/RE/OSINT tool
-integration beyond package lists) is not built yet.
+> **Heavy W.I.P — Feedback appreciated!**
+> This **is** a Live USB OS — it boots and runs from the stick without touching your existing installation, and needs nothing installed to your internal drive unless you explicitly set up encrypted persistence. Seven core system daemons are implemented; no build has completed end-to-end yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's verified vs. what still needs a real build to confirm.
 
-## Repo layout
+---
 
-Everything lives directly under `build/config/`, at the paths live-build
-requires — no separate source tree, no sync/generation step. Edit files
-in place.
+## System Requirements
 
-- `build/auto/config` — the `lb config` invocation (architecture,
-  distribution, bootloader, ISO metadata).
-- `build/config/package-lists/*.list.chroot` — one file per tool
-  category (base, desktop, pentest, networking, forensics,
-  reverse-engineering, osint, development, sysadmin).
-- `build/config/hooks/live/*.hook.chroot` — scripts that run inside the
-  chroot during the build: installing the D-Bus daemons as real system
-  services (`0200-...`), and a best-effort installer for tools not in
-  Debian's repos (`0300-...`).
-- `build/config/includes.chroot/` — the actual files that end up in the
-  built image, at their real destination paths (e.g.
-  `usr/lib/raptor-security/raptor_mode_managerd.py` becomes
-  `/usr/lib/raptor-security/raptor_mode_managerd.py` on the live system).
-  This is where every daemon's source, every systemd unit, every D-Bus
-  policy, and the per-mode firewall/sysctl/service configs actually live.
-- `docs/ARCHITECTURE.md` — design decisions, D-Bus interface reference
-  for all seven components, and the pre-build checklist.
+| | Minimum | Recommended |
+|---|---|---|
+| **CPU** | 64-bit x86_64 | AMD Ryzen / Intel 10th gen+ |
+| **RAM** | 4 GB | 8 GB+ |
+| **USB Drive** | 8 GB | 32 GB+ (room for encrypted persistence) |
+| **Boot** | UEFI required | — |
 
-**On an earlier version of this repo:** there was a separate top-level
-`files/` directory (mirroring [Raptor-OS](https://github.com/Cerberus9-dev/Raptor-OS)
-(home edition)'s `files/scripts` + `files/system_files` convention) plus
-a `sync-files.sh` script to copy it into `includes.chroot/` before every
-build. That's been removed — home edition's BlueBuild can point its
-build system at an arbitrary `files/` directory via `recipe.yml`'s
-declarative source/destination list; live-build has no equivalent, so
-keeping two directories in sync by hand added a "don't forget to run the
-sync script" step without a real benefit at this project's size. One
-tree, at the paths live-build actually requires, is simpler.
+---
+
+## Installation
+
+Build the ISO yourself (see **Building**, below), then flash it to a USB drive:
+
+- **[Rufus](https://rufus.ie/en/)** — select **DD image mode** + **GPT** partition scheme
+- **[Ventoy](https://www.ventoy.net)** — copy ISO to Ventoy USB, boot and select it
+- **[balenaEtcher](https://etcher.balena.io/)** — straightforward drag-and-drop flashing
+
+Boots directly into a Live KDE Plasma session. No installer, no first-boot setup wizard — the system is ready to use the moment it boots.
+
+---
 
 ## Building
 
-```sh
+**Via GitHub Actions (recommended):** Actions tab → **Build Raptor OS Security ISO** → Run workflow. Builds on a GitHub-hosted runner and uploads the finished `.iso` plus its SHA-256 checksum as a downloadable artifact. No local setup required.
+
+**Locally:**
+
+```bash
 cd build
 sudo lb clean --purge
 ./auto/config
 sudo lb build
 ```
 
-Requires `live-build`, `debootstrap`, and enough disk (Debian Live builds
-typically need 15-20+ GB free) and network to Debian's archive. Not yet
-validated in CI or locally by a maintainer — see
-`docs/ARCHITECTURE.md`'s pre-build checklist before your first attempt.
+Requires `live-build`, `debootstrap`, and enough disk (Debian Live builds typically need 15-20+ GB free) and network access to Debian's archive. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)'s pre-build checklist and CI repair log before your first attempt.
+
+---
+
+## What's Included
+
+### Security & Networking
+
+| Category | Tools |
+|---|---|
+| **Penetration Testing** | nmap, masscan, netdiscover, arp-scan, nikto, whatweb, sqlmap, gobuster, ffuf, hydra, john, hashcat, aircrack-ng |
+| **Networking** | Wireshark, tshark, tcpdump, iperf3, macchanger, OpenVPN, WireGuard, Tor + torsocks, nyx |
+| **Forensics** | Sleuth Kit, Autopsy, TestDisk, foremost, binwalk, exiftool, bulk-extractor, ddrescue, dc3dd |
+| **Reverse Engineering** | radare2, gdb-multiarch, ltrace, strace, binutils, Bless (hex editor) |
+| **OSINT** | whois, theHarvester, recon-ng |
+| **Crypto / Password Auditing** | hashid, openssl, Kleopatra |
+
+### Development
+
+Git, build-essential, GCC/Clang/LLVM, CMake, Ninja, GDB/LLDB, Python 3, Node.js, Go, Rust, a JDK, Podman + Distrobox, virt-manager + QEMU.
+
+### Desktop & System
+
+Firefox ESR, Okular, LibreOffice, Kdenlive, Gwenview, Ark, VLC, Konsole, Dolphin, htop/btop, Timeshift, GParted, OpenSSH + FileZilla.
+
+### Raptor Apps
+
+| App | Purpose |
+|---|---|
+| **Raptor Security Center** | Dashboard GUI — live system/network/security status, one-click mode switching |
+| **Mode Manager** | Backend daemon powering three modes: Secure, Hardened, Lockdown |
+| **Emergency Shutdown** | Session teardown + poweroff, with a clear confirmation dialog before anything happens |
+| **Persistence Manager** | Set up or check encrypted (LUKS) persistent storage on your USB drive |
+| **VPN / Tor Managers** | Connect, disconnect, and monitor VPN or Tor state from the dashboard |
+| **Network Protection Manager** | Interface, IP, DNS, IPv6, and MAC-randomization status and controls |
+
+---
+
+## Raptor Security Center — Mode Manager
+
+GTK4/libadwaita dashboard with three modes — **Secure**, **Hardened**, **Lockdown** — each backed by a real nftables firewall ruleset, sysctl hardening profile, and systemd service posture, not just a UI label. Every dashboard indicator is re-verified against live system state on each check, never cached or assumed:
+
+- **Secure** — baseline firewall, comfortable for everyday use
+- **Hardened** — same tools and apps, output traffic restricted to an allowlist, aggressive logging
+- **Lockdown** — real network kill switch: only VPN/Tor tunnel interfaces can originate outbound traffic
+
+## Emergency Shutdown
+
+A dedicated, separate daemon (not folded into Mode Manager) for ending a session fast: terminates the session, clears what a Live tmpfs session can actually clear, and powers off — honest in the confirmation dialog about what it can't guarantee (e.g. prior swap contents), rather than overclaiming forensic erasure.
+
+## Persistence Manager
+
+Distinguishes Live session data (gone at poweroff, by design) from encrypted persistent storage (LUKS + ext4, explicitly opt-in) — set up directly from the dashboard against a removable device you select.
+
+---
+
+## Built With
+- [live-build](https://salsa.debian.org/live-team/live-build) — Debian's official Live image build system
+- [Debian](https://www.debian.org/) (bookworm) — base distribution
+
+## Changelog
+See [changelog.md](changelog.md) for full version history.
