@@ -29,9 +29,9 @@ jobs:
             rsync \
             git
 
-      - name: Check build configuration
+      - name: Check repository configuration
         run: |
-          echo "===== Checking for unwanted Ubuntu configuration ====="
+          echo "===== Checking repository for unwanted Ubuntu references ====="
 
           if grep -RniE \
             'ubuntu-keyring|security\.ubuntu\.com|archive\.ubuntu\.com' \
@@ -42,7 +42,8 @@ jobs:
             exit 1
           fi
 
-          echo "No unwanted Ubuntu configuration found."
+          echo
+          echo "No unwanted Ubuntu references found."
 
       - name: Show auto config
         working-directory: build
@@ -63,21 +64,43 @@ jobs:
         run: |
           bash auto/config
 
-      - name: Show generated live-build configuration
+      - name: Verify live-build configuration
         working-directory: build
         run: |
-          echo "===== Generated live-build configuration ====="
-
-          find config -maxdepth 2 -type f -print 2>/dev/null || true
-
-          echo
-          echo "===== Searching for bad security repository ====="
+          echo "===== Searching generated configuration ====="
 
           grep -RniE \
-            'debian-security|bookworm/updates|security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
+            'bookworm/updates|security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
             config/ \
             --exclude-dir=.git \
             || true
+
+          echo
+          echo "===== Live-build configuration files ====="
+
+          find config -maxdepth 2 -type f -print 2>/dev/null || true
+
+      - name: Inspect generated sources configuration
+        working-directory: build
+        run: |
+          echo "===== Relevant generated configuration ====="
+
+          for file in \
+            config/bootstrap \
+            config/chroot \
+            config/binary \
+            config/archives/* \
+            config/archives/*.*; do
+
+            if [ -f "$file" ]; then
+              echo
+              echo "----- $file -----"
+              grep -nE \
+                'security|mirror|bookworm|updates' \
+                "$file" \
+                || true
+            fi
+          done
 
       - name: Build ISO
         working-directory: build
@@ -97,6 +120,7 @@ jobs:
 
           echo "ISO=$ISO" >> "$GITHUB_OUTPUT"
 
+          echo
           echo "===== ISO ====="
           ls -lh "$ISO"
 
@@ -105,6 +129,7 @@ jobs:
         run: |
           sha256sum "${{ steps.iso.outputs.ISO }}" > raptor-security.sha256
 
+          echo
           echo "===== SHA256 ====="
           cat raptor-security.sha256
 
