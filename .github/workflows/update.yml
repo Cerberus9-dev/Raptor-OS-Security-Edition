@@ -1,34 +1,21 @@
-name: Build Raptor OS Security Update
+name: Update Raptor Security ISO
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
-concurrency:
-  group: raptor-security-update
-  cancel-in-progress: true
-
 jobs:
-  update:
-    name: Rebuild Raptor OS Security
-    runs-on: ubuntu-24.04
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/local/lib/android \
-            /opt/ghc \
-            /usr/local/share/boost \
-            "$AGENT_TOOLSDIRECTORY" || true
-
-          df -h
 
       - name: Install build dependencies
         run: |
@@ -36,34 +23,30 @@ jobs:
           sudo apt-get install -y \
             live-build \
             debootstrap \
-            debian-archive-keyring \
-            squashfs-tools \
             xorriso \
+            squashfs-tools \
             isolinux \
-            syslinux-utils \
-            rsync
+            syslinux-common \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            grub-efi-amd64-signed \
+            shim-signed \
+            dosfstools \
+            mtools \
+            rsync \
+            curl \
+            wget
 
-      - name: Show live-build version
-        run: |
-          lb --version
-          debootstrap --version
-
-      - name: Clean previous build
+      - name: Clean previous live-build configuration
         working-directory: build
         run: |
           sudo lb clean --purge || true
 
-          sudo rm -rf \
-            cache \
-            chroot \
-            binary
-
-          sudo rm -f \
-            config/bootstrap \
-            config/chroot \
-            config/binary \
-            config/common \
-            config/source
+          rm -rf config/binary
+          rm -rf config/bootstrap
+          rm -rf config/chroot
+          rm -rf config/common
+          rm -rf config/source
 
       - name: Configure live-build
         working-directory: build
@@ -71,65 +54,44 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Verify archive configuration
+      - name: Verify generated configuration
         working-directory: build
         run: |
-          echo "===== base.list.chroot ====="
-          cat config/archives/base.list.chroot
+          echo "=== live-build configuration ==="
+          lb config --dump || true
 
-          echo
-          echo "===== security.list.chroot ====="
-          cat config/archives/security.list.chroot
-
-          echo
-          echo "===== generated config ====="
-          grep -RniE \
-            'security\.debian\.org|bookworm/updates|bookworm-security' \
-            config/ \
-            2>/dev/null || true
-
-      - name: Verify no obsolete security repository exists
-        working-directory: build
-        run: |
-          if grep -RniE \
-            'security\.debian\.org.*bookworm/updates|security\.debian\.org bookworm/updates' \
-            config/ \
-            2>/dev/null; then
-
-            echo "ERROR: obsolete bookworm/updates security repository found."
+          echo "=== Searching for obsolete security suite ==="
+          if grep -RInE \
+            'security\.debian\.org.*bookworm/updates|debian-security.*bookworm/updates|bookworm/updates' \
+            config auto 2>/dev/null; then
+            echo "ERROR: obsolete bookworm/updates repository found"
             exit 1
           fi
 
-          echo "No obsolete security repository found."
+          echo "=== Repository configuration ==="
+          grep -RInE \
+            'bookworm(-security|-updates)?' \
+            config 2>/dev/null || true
 
-      - name: Build updated OS
+      - name: Build ISO
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Verify build
+      - name: List build output
         working-directory: build
         run: |
-          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          ls -lah
+          find . -maxdepth 1 -type f \
+            \( -name '*.iso' -o -name '*.img' -o -name '*.hybrid.iso' \) \
+            -print
 
-          if [ -z "$ISO" ]; then
-            echo "ERROR: live-build completed but no ISO was produced."
-            exit 1
-          fi
-
-          echo "Raptor OS Security update build succeeded:"
-          ls -lh "$ISO"
-
-          sha256sum "$ISO" > raptor-security.sha256
-
-          cat raptor-security.sha256
-
-      - name: Upload updated OS artifact
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: Raptor-OS-Security-Update
+          name: raptor-security-iso
           path: |
             build/*.iso
-            build/raptor-security.sha256
-          compression-level: 0
-          retention-days: 30
+            build/*.img
+            build/*.hybrid.iso
+          if-no-files-found: error
