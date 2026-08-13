@@ -1,18 +1,6 @@
-name: Build Raptor Security OS
+name: Build Raptor OS Security
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "build/**"
-      - ".github/workflows/update.yml"
-
-  pull_request:
-    paths:
-      - "build/**"
-      - ".github/workflows/update.yml"
-
   workflow_dispatch:
 
 permissions:
@@ -20,14 +8,14 @@ permissions:
 
 jobs:
   build:
-    name: Build & Validate Raptor Security
+    name: Build Raptor OS Security
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -42,13 +30,11 @@ jobs:
 
       - name: Configure live-build
         working-directory: build
-        run: |
-          ./auto/config
+        run: ./auto/config
 
-      - name: Build OS
+      - name: Build Raptor OS
         working-directory: build
-        run: |
-          sudo lb build
+        run: sudo lb build
 
       - name: Verify build
         working-directory: build
@@ -56,16 +42,21 @@ jobs:
           ISO=$(find . -maxdepth 1 -type f -name "*.iso" -print -quit)
 
           if [ -z "$ISO" ]; then
-            echo "ERROR: Build completed but no ISO was produced."
+            echo "ERROR: No ISO was produced."
             exit 1
           fi
 
-          echo "======================================"
-          echo "Raptor OS Security build successful"
-          echo "======================================"
-          echo
-          echo "ISO:"
+          echo "Build successful:"
           ls -lh "$ISO"
-          echo
-          echo "SHA256:"
-          sha256sum "$ISO"
+
+          sha256sum "$ISO" > raptor-security.sha256
+
+      - name: Upload updated OS
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raptor-OS-Security-Update
+          path: |
+            build/*.iso
+            build/raptor-security.sha256
+          compression-level: 0
+          retention-days: 30
