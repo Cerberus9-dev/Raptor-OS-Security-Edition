@@ -1,5 +1,4 @@
 #!/bin/sh
-
 set -e
 
 lb config noauto \
@@ -11,8 +10,8 @@ lb config noauto \
   --bootstrap-keyring debian-archive-keyring \
   --mirror-bootstrap "http://deb.debian.org/debian/" \
   --mirror-chroot "http://deb.debian.org/debian/" \
-  --mirror-binary "http://deb.debian.org/debian/" \
   --mirror-chroot-security "http://deb.debian.org/debian-security/" \
+  --mirror-binary "http://deb.debian.org/debian/" \
   --mirror-binary-security "http://deb.debian.org/debian-security/" \
   --debian-installer none \
   --binary-images iso-hybrid \
@@ -21,5 +20,4 @@ lb config noauto \
   --iso-publisher "Raptor OS Project" \
   --iso-volume "RAPTOR-SECURITY" \
   --memtest none \
-  --win32-loader false \
-  "$@"
+  --win32-loader false
