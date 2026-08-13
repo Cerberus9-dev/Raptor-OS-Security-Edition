@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -30,7 +30,7 @@ jobs:
 
       - name: Configure live-build
         working-directory: build
-        run: ./auto/config
+        run: bash auto/config
 
       - name: Build Raptor OS
         working-directory: build
@@ -50,6 +50,9 @@ jobs:
           ls -lh "$ISO"
 
           sha256sum "$ISO" > raptor-security.sha256
+
+          echo "SHA256:"
+          cat raptor-security.sha256
 
       - name: Upload updated OS
         uses: actions/upload-artifact@v4
