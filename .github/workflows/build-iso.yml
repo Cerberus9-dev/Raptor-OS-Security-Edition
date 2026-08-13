@@ -1,18 +1,14 @@
-name: Build Raptor Security ISO
+name: Build Raptor OS Security ISO
 
 on:
   workflow_dispatch:
-
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read
 
 jobs:
   build-iso:
-    name: Build Security Edition ISO
+    name: Build Raptor OS Security ISO
     runs-on: ubuntu-24.04
 
     steps:
@@ -34,16 +30,15 @@ jobs:
 
       - name: Configure live-build
         working-directory: build
-        run: |
-          ./auto/config
+        run: bash auto/config
 
       - name: Build ISO
         working-directory: build
-        run: |
-          sudo lb build
+        run: sudo lb build
 
       - name: Find ISO
         id: iso
+        working-directory: build
         run: |
           ISO=$(find . -maxdepth 1 -type f -name "*.iso" -print -quit)
 
@@ -53,12 +48,15 @@ jobs:
           fi
 
           echo "ISO=$ISO" >> "$GITHUB_OUTPUT"
-          echo "Found: $ISO"
+          echo "Found ISO:"
+          ls -lh "$ISO"
 
-      - name: Generate checksum
+      - name: Generate SHA256
         working-directory: build
         run: |
           sha256sum "${{ steps.iso.outputs.ISO }}" > raptor-security.sha256
+
+          echo "SHA256:"
           cat raptor-security.sha256
 
       - name: Upload ISO artifact
