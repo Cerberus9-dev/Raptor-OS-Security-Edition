@@ -27,6 +27,7 @@ jobs:
             /opt/ghc \
             /usr/local/share/boost \
             "$AGENT_TOOLSDIRECTORY" || true
+
           df -h
 
       - name: Install build dependencies
@@ -56,27 +57,30 @@ jobs:
             cache \
             chroot \
             binary \
-            .build \
             config/bootstrap \
             config/chroot \
             config/binary \
             config/common \
-            config/source \
-            config/archives
+            config/source
 
-      - name: Restore repository archive configuration
+          # Keep the repository's archive configuration.
+          # Do not generate duplicate archive files here.
+          test -f config/archives/base.list.chroot
+          test -f config/archives/security.list.chroot
+
+      - name: Validate repository archive files
         working-directory: build
         run: |
-          mkdir -p config/archives
+          expected_base='deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware'
 
-          cat > config/archives/base.list.chroot <<'EOF'
-          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-          EOF
+          expected_security='deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware'
 
-          cat > config/archives/security.list.chroot <<'EOF'
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-          EOF
+          printf '%s\n' "$expected_base" > /tmp/expected-base.list
+          printf '%s\n' "$expected_security" > /tmp/expected-security.list
+
+          diff -u /tmp/expected-base.list config/archives/base.list.chroot
+          diff -u /tmp/expected-security.list config/archives/security.list.chroot
 
       - name: Configure live-build
         working-directory: build
@@ -84,17 +88,7 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Remove obsolete generated security repositories
-        working-directory: build
-        run: |
-          find config -type f -print0 | while IFS= read -r -d '' file; do
-            if grep -qE 'security\.debian\.org.*bookworm/updates|deb\.debian\.org/debian-security.*bookworm/updates' "$file" 2>/dev/null; then
-              sed -i -E '/security\.debian\.org.*bookworm\/updates/d' "$file"
-              sed -i -E '/deb\.debian\.org\/debian-security.*bookworm\/updates/d' "$file"
-            fi
-          done
-
-      - name: Verify archive configuration
+      - name: Verify generated configuration
         working-directory: build
         run: |
           echo "===== base.list.chroot ====="
@@ -106,32 +100,30 @@ jobs:
 
           echo
           echo "===== generated archive configuration ====="
-          find config -type f \
-            \( -name '*.list*' -o -name '*.conf' \) \
-            -print \
-            -exec grep -HnE \
-            'debian-security|bookworm-security|bookworm/updates|security\.debian\.org' {} \; \
+          grep -RniE \
+            'deb\.debian\.org/debian|deb\.debian\.org/debian-security|security\.debian\.org|bookworm-updates|bookworm-security|bookworm/updates' \
+            config/ \
             2>/dev/null || true
 
-      - name: Verify no obsolete security repository exists
+      - name: Reject obsolete security repository
         working-directory: build
         run: |
           if grep -RniE \
-            'security\.debian\.org.*bookworm/updates|deb\.debian\.org/debian-security.*bookworm/updates' \
+            '(^|[[:space:]])(https?://)?(security\.debian\.org|deb\.debian\.org/debian-security)[[:space:]]+bookworm/updates([[:space:]]|$)' \
             config/ \
             2>/dev/null; then
-            echo "ERROR: obsolete bookworm/updates security repository found."
+            echo "ERROR: obsolete Debian security suite bookworm/updates detected."
             exit 1
           fi
 
-          echo "No obsolete security repository found."
+          echo "OK: no obsolete bookworm/updates repository found."
 
       - name: Build updated OS
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Verify build
+      - name: Verify ISO
         working-directory: build
         run: |
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
@@ -141,13 +133,13 @@ jobs:
             exit 1
           fi
 
-          echo "Raptor OS Security update build succeeded:"
+          echo "Raptor OS Security build succeeded:"
           ls -lh "$ISO"
 
           sha256sum "$ISO" > raptor-security.sha256
           cat raptor-security.sha256
 
-      - name: Upload updated OS artifact
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
           name: Raptor-OS-Security-Update
