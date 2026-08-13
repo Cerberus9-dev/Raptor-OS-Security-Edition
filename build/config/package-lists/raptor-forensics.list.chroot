@@ -1,0 +1,16 @@
+# Digital forensics — spec section 14.
+# Spec requires clearly marking read-only vs data-modifying operations
+# (section 14 closing note) — that's a Tool Launcher / Security Center UI
+# responsibility, not something a package list can express, but flagging
+# here so it isn't lost: sleuthkit/autopsy operations are read-only against
+# a disk image by design; ddrescue and dc3dd are NOT (they write copies).
+
+sleuthkit
+autopsy
+testdisk
+foremost
+binwalk
+exiftool
+bulk-extractor
+ddrescue
+dc3dd

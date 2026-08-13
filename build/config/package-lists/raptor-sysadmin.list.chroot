@@ -1,0 +1,15 @@
+# System administration — spec section 19.
+
+konsole
+dolphin
+gnome-disk-utility
+htop
+btop
+plasma-systemmonitor
+journalctl
+timeshift
+p7zip-full
+unzip
+openssh-client
+openssh-sftp-server
+filezilla

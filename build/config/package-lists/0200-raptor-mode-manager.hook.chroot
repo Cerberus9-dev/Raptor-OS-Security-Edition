@@ -1,0 +1,107 @@
+#!/bin/sh
+# Runs inside the chroot during image build (live-build convention:
+# NNNN-name.hook.chroot). Wires up Mode Manager as a real system service
+# rather than leaving it as loose files under /usr/lib.
+
+set -e
+
+echo "[raptor-security] installing mode-manager"
+
+# Executable entry point — a thin wrapper so the daemon can be invoked as
+# `raptor-mode-managerd` regardless of where the .py implementation lives.
+cat > /usr/bin/raptor-mode-managerd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_mode_managerd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-mode-managerd
+chmod 644 /usr/lib/raptor-security/raptor_mode_managerd.py
+
+# Privileged group permitted to change modes (see TODO in
+# org.raptor.ModeManager.conf about replacing this with real polkit).
+groupadd -f raptor-admin
+# The live session's default user is created elsewhere by live-config at
+# boot (username=raptor per bootappend-live in build/auto/config), so we
+# can't usermod it here — seed the membership via a first-boot hook
+# instead (see raptor-firstboot below) rather than guessing the username
+# at build time.
+
+# Default mode on first boot: Secure (spec section 7 — "normal operating
+# mode"). Written directly rather than left unset so GetMode() never
+# returns "unknown" on a freshly booted image.
+mkdir -p /etc/raptor-security
+echo "secure" > /etc/raptor-security/current-mode
+
+systemctl enable raptor-mode-manager.service
+
+chmod 755 /usr/lib/raptor-security/raptor-firstboot.sh
+systemctl enable raptor-firstboot.service
+
+# Security Center launcher wrapper
+cat > /usr/bin/raptor-security-center <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_security_center.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-security-center
+chmod 644 /usr/lib/raptor-security/raptor_security_center.py
+
+# Emergency Shutdown Manager
+echo "[raptor-security] installing emergency-shutdown"
+cat > /usr/bin/raptor-emergency-shutdownd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_emergency_shutdownd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-emergency-shutdownd
+chmod 644 /usr/lib/raptor-security/raptor_emergency_shutdownd.py
+chmod 755 /usr/lib/raptor-security/raptor-emergency-shutdown.sh
+systemctl enable raptor-emergency-shutdown.service
+
+# Persistence Manager
+echo "[raptor-security] installing persistence-manager"
+cat > /usr/bin/raptor-persistence-managerd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_persistence_managerd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-persistence-managerd
+chmod 644 /usr/lib/raptor-security/raptor_persistence_managerd.py
+systemctl enable raptor-persistence-manager.service
+
+# VPN Manager
+echo "[raptor-security] installing vpn-manager"
+cat > /usr/bin/raptor-vpn-managerd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_vpn_managerd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-vpn-managerd
+chmod 644 /usr/lib/raptor-security/raptor_vpn_managerd.py
+systemctl enable raptor-vpn-manager.service
+
+# Tor Manager
+echo "[raptor-security] installing tor-manager"
+cat > /usr/bin/raptor-tor-managerd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_tor_managerd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-tor-managerd
+chmod 644 /usr/lib/raptor-security/raptor_tor_managerd.py
+
+# Append control-port config to Tor's torrc rather than overwriting it —
+# preserves whatever the tor package's own default torrc already sets.
+if ! grep -q "^ControlPort" /etc/tor/torrc 2>/dev/null; then
+    cat /etc/raptor-security/raptor-torrc-addition.conf >> /etc/tor/torrc
+else
+    echo "[raptor-security] WARNING: /etc/tor/torrc already has a ControlPort line — skipping append, verify manually"
+fi
+
+systemctl enable raptor-tor-manager.service
+
+# Network Protection Manager
+echo "[raptor-security] installing network-protection-manager"
+cat > /usr/bin/raptor-network-protection-managerd <<'EOF'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/raptor-security/raptor_network_protection_managerd.py "$@"
+EOF
+chmod 755 /usr/bin/raptor-network-protection-managerd
+chmod 644 /usr/lib/raptor-security/raptor_network_protection_managerd.py
+systemctl enable raptor-network-protection-manager.service
+
+echo "[raptor-security] mode-manager installed, default mode: secure"

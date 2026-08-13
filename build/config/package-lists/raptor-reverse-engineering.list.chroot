@@ -1,0 +1,17 @@
+# Reverse engineering — spec section 15.
+
+radare2
+gdb-multiarch
+ltrace
+strace
+binutils
+bless
+
+# plain `gdb` intentionally not repeated here — already installed via
+# raptor-development.list.chroot. gdb-multiarch kept explicit since it's
+# RE-specific (cross-arch debugging) and dev doesn't need it by default.
+
+# NOTE: Ghidra is not packaged for Debian — it ships as a standalone
+# archive from its GitHub releases. If wanted, add it via a
+# build/config/hooks/live/ hook that downloads and unpacks a pinned
+# release, not this package list.

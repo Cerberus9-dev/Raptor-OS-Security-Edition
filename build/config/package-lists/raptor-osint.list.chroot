@@ -1,0 +1,11 @@
+# OSINT — spec section 16. Legitimate public-source research tooling only,
+# per the spec's own instruction to avoid questionable/malicious services.
+
+whois
+theharvester
+recon-ng
+
+# exiftool intentionally not repeated here — already installed via
+# raptor-forensics.list.chroot (its home category: metadata inspection).
+# Duplicate package names across .list.chroot files aren't a build error
+# (apt just dedupes), but no reason to list it twice.
