@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install live-build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -33,7 +33,7 @@ jobs:
           lb --version
           debootstrap --version
 
-      - name: Clean previous live-build state
+      - name: Clean previous build
         working-directory: build
         run: |
           sudo lb clean --purge || true
@@ -54,38 +54,67 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Verify Debian repository configuration
+      - name: Fix generated security repository
         working-directory: build
         run: |
-          echo "Checking generated configuration..."
+          echo "Searching generated live-build configuration..."
 
-          if grep -Rni 'bookworm/updates' config/ 2>/dev/null; then
-            echo "ERROR: Invalid bookworm/updates repository detected."
+          grep -Rni \
+            'bookworm/updates' \
+            config/ \
+            2>/dev/null || true
+
+          echo
+          echo "Replacing obsolete Bookworm security suite..."
+
+          find config -type f -print0 | while IFS= read -r -d '' file; do
+            if grep -q 'bookworm/updates' "$file" 2>/dev/null; then
+              echo "Fixing $file"
+              sed -i 's/bookworm\/updates/bookworm-security/g' "$file"
+            fi
+          done
+
+          echo
+          echo "Checking result..."
+
+          if grep -Rni \
+            'bookworm/updates' \
+            config/ \
+            2>/dev/null; then
+
+            echo "ERROR: bookworm/updates still exists."
             exit 1
           fi
 
+          echo "Security repository fixed."
+
+      - name: Verify Ubuntu repositories are absent
+        working-directory: build
+        run: |
           if grep -RniE \
             'security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
-            config/ 2>/dev/null; then
+            config/ \
+            2>/dev/null; then
+
             echo "ERROR: Ubuntu repository detected."
             exit 1
           fi
 
-          echo "Repository checks passed."
+          echo "No Ubuntu repositories detected."
 
       - name: Build ISO
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Locate ISO
+      - name: Find ISO
         id: iso
         working-directory: build
         run: |
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
 
           if [ -z "$ISO" ]; then
-            echo "ERROR: No ISO was produced."
+            echo "ERROR: No ISO was generated."
             exit 1
           fi
 
@@ -93,7 +122,7 @@ jobs:
 
           ls -lh "$ISO"
 
-      - name: Generate SHA256
+      - name: Generate checksum
         working-directory: build
         run: |
           sha256sum "${{ steps.iso.outputs.ISO }}" > raptor-security.sha256
