@@ -28,6 +28,18 @@ jobs:
             rsync \
             git
 
+      - name: Show build configuration
+        working-directory: build
+        run: |
+          echo "===== build/auto/config ====="
+          cat auto/config
+          echo
+          echo "===== Checking for unsupported options ====="
+          if grep -RniE 'bootloaders|uefi-secure-boot' .; then
+            echo "ERROR: Unsupported bootloader options found."
+            exit 1
+          fi
+
       - name: Configure live-build
         working-directory: build
         run: bash auto/config
@@ -48,6 +60,7 @@ jobs:
           fi
 
           echo "ISO=$ISO" >> "$GITHUB_OUTPUT"
+
           echo "Found ISO:"
           ls -lh "$ISO"
 
