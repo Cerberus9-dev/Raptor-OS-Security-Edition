@@ -14,7 +14,8 @@ lb config noauto \
     --mirror-binary "http://deb.debian.org/debian/" \
     --mirror-chroot-security "http://deb.debian.org/debian-security/" \
     --mirror-binary-security "http://deb.debian.org/debian-security/" \
-    --security false \
+    --security true \
+    --updates true \
     --debian-installer none \
     --binary-images iso-hybrid \
     --bootappend-live "boot=live components username=raptor hostname=raptor-security" \
