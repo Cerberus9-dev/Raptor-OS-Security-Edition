@@ -1,52 +1,66 @@
-name: Update Raptor Security ISO
+name: Build Raptor OS Security Update
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  update:
+    name: Build Raptor OS Security Update
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+
+          df -h
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             live-build \
             debootstrap \
-            xorriso \
+            debian-archive-keyring \
             squashfs-tools \
+            xorriso \
             isolinux \
-            syslinux-common \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            grub-efi-amd64-signed \
-            shim-signed \
-            dosfstools \
-            mtools \
-            rsync \
-            curl \
-            wget
+            syslinux-utils \
+            rsync
 
-      - name: Clean previous live-build configuration
+      - name: Show versions
+        run: |
+          lb --version
+          debootstrap --version
+
+      - name: Clean previous build
         working-directory: build
         run: |
           sudo lb clean --purge || true
 
-          rm -rf config/binary
-          rm -rf config/bootstrap
-          rm -rf config/chroot
-          rm -rf config/common
-          rm -rf config/source
+          sudo rm -rf \
+            cache \
+            chroot \
+            binary \
+            .build
+
+          sudo rm -f \
+            config/bootstrap \
+            config/chroot \
+            config/binary \
+            config/common \
+            config/source
 
       - name: Configure live-build
         working-directory: build
@@ -54,44 +68,102 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Verify generated configuration
+      - name: Verify repository configuration
         working-directory: build
         run: |
-          echo "=== live-build configuration ==="
-          lb config --dump || true
+          echo "===== CHROOT ARCHIVES ====="
+          for file in config/archives/*.list.chroot; do
+            echo "--- $file ---"
+            cat "$file"
+          done
 
-          echo "=== Searching for obsolete security suite ==="
-          if grep -RInE \
-            'security\.debian\.org.*bookworm/updates|debian-security.*bookworm/updates|bookworm/updates' \
-            config auto 2>/dev/null; then
-            echo "ERROR: obsolete bookworm/updates repository found"
+          echo
+          echo "===== BINARY ARCHIVES ====="
+          for file in config/archives/*.list.binary; do
+            echo "--- $file ---"
+            cat "$file"
+          done
+
+          echo
+          echo "===== SEARCHING FOR OBSOLETE SECURITY SUITE ====="
+
+          if grep -Rni \
+            'bookworm/updates' \
+            config/ \
+            2>/dev/null; then
+            echo
+            echo "ERROR: obsolete bookworm/updates repository detected."
             exit 1
           fi
 
-          echo "=== Repository configuration ==="
-          grep -RInE \
-            'bookworm(-security|-updates)?' \
-            config 2>/dev/null || true
+          echo "No obsolete bookworm/updates repository found."
 
-      - name: Build ISO
+      - name: Verify Debian repositories
+        working-directory: build
+        run: |
+          echo "===== DEBIAN REPOSITORIES ====="
+
+          grep -RniE \
+            'deb\.debian\.org/debian|deb\.debian\.org/debian-security' \
+            config/ \
+            2>/dev/null || true
+
+          echo
+          echo "===== VERIFYING SECURITY SUITE ====="
+
+          if ! grep -Rni \
+            'deb.debian.org/debian-security bookworm-security' \
+            config/ \
+            2>/dev/null; then
+            echo "ERROR: bookworm-security repository is missing."
+            exit 1
+          fi
+
+          echo "bookworm-security repository is present."
+
+      - name: Verify Ubuntu repositories are absent
+        working-directory: build
+        run: |
+          if grep -RniE \
+            'security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
+            config/ \
+            2>/dev/null; then
+
+            echo "ERROR: Ubuntu repository detected."
+            exit 1
+          fi
+
+          echo "No Ubuntu repositories detected."
+
+      - name: Build Raptor OS
         working-directory: build
         run: |
           sudo lb build
 
-      - name: List build output
+      - name: Verify ISO
         working-directory: build
         run: |
-          ls -lah
-          find . -maxdepth 1 -type f \
-            \( -name '*.iso' -o -name '*.img' -o -name '*.hybrid.iso' \) \
-            -print
+          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
 
-      - name: Upload ISO
+          if [ -z "$ISO" ]; then
+            echo "ERROR: No ISO was generated."
+            exit 1
+          fi
+
+          echo "Raptor OS Security build succeeded."
+
+          ls -lh "$ISO"
+
+          sha256sum "$ISO" > raptor-security.sha256
+
+          cat raptor-security.sha256
+
+      - name: Upload update artifact
         uses: actions/upload-artifact@v4
         with:
-          name: raptor-security-iso
+          name: Raptor-OS-Security-Update
           path: |
             build/*.iso
-            build/*.img
-            build/*.hybrid.iso
-          if-no-files-found: error
+            build/raptor-security.sha256
+          compression-level: 0
+          retention-days: 30
