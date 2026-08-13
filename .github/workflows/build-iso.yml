@@ -29,20 +29,28 @@ jobs:
             rsync \
             git
 
-      - name: Show build configuration
+      - name: Check for Ubuntu configuration
+        run: |
+          echo "Checking Security Edition build configuration..."
+
+          if grep -RniE \
+            'ubuntu-keyring|security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu/' \
+            build/; then
+            echo
+            echo "ERROR: Ubuntu-specific configuration was found in build/."
+            echo "Raptor OS Security must use Debian repositories/packages."
+            exit 1
+          fi
+
+          echo "No Ubuntu-specific configuration found."
+
+      - name: Show live-build configuration
         working-directory: build
         run: |
           echo "===== build/auto/config ====="
           cat auto/config
-          echo
-          echo "===== Checking for unsupported options ====="
 
-          if grep -RniE 'bootloaders|uefi-secure-boot' .; then
-            echo "ERROR: Unsupported bootloader options found."
-            exit 1
-          fi
-
-      - name: Clean live-build configuration
+      - name: Clean live-build
         working-directory: build
         run: |
           sudo lb clean --purge || true
