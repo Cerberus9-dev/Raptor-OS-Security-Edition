@@ -1,0 +1,14 @@
+[Unit]
+Description=Raptor Security Tor Manager
+Documentation=https://github.com/Cerberus9-dev/Raptor-OS-Security-Edition
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.raptor.TorManager
+ExecStart=/usr/bin/raptor-tor-managerd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
