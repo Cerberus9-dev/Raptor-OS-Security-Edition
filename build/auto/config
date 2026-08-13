@@ -1,1 +1,43 @@
+#!/bin/sh
+# build/auto/config
+#
+# Regenerates build/config/ via `lb config`. Run this (from build/) any time
+# these flags change; live-build will refuse to build against a stale config
+# tree, so this file is the single source of truth, not the generated tree.
+#
+# Usage:
+#   cd build && lb clean --purge && ./auto/config && lb build
 
+set -e
+
+lb config noauto \
+    --architectures amd64 \
+    --distribution bookworm \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --debian-installer none \
+    --binary-images iso-hybrid \
+    --bootappend-live "boot=live components username=raptor hostname=raptor-security" \
+    --bootloaders "grub-efi" \
+    --uefi-secure-boot disable \
+    --iso-application "Raptor Security" \
+    --iso-publisher "Raptor OS Project" \
+    --iso-volume "RAPTOR-SECURITY" \
+    --memtest none \
+    --win32-loader false \
+    "${@}"
+
+# Notes for whoever builds this:
+#
+# - `--distribution bookworm`: stable Debian base. Move to `trixie` once
+#   we've validated the pentest package set is complete there; some tools
+#   (e.g. certain forensics packages) lag on transitions between releases.
+# - `--debian-installer none`: this is a live/portable image, not an
+#   installer image, per spec section 23. A "write to disk" installer
+#   option can be added later as a separate lb variant if wanted — do not
+#   silently fold installer behavior into this same build.
+# - Persistence is NOT configured here. live-boot handles persistence
+#   entirely at boot time via a separate `persistence` partition/file the
+#   user creates on the USB stick (or via `raptor-persistence-setup`, see
+#   a Persistence Manager setup flow) — it is not baked into the ISO.
+#   This keeps the "amnesic by default, persistence is opt-in" property
+#   from spec section 23 structurally true rather than configured.
