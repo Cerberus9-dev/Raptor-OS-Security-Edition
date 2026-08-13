@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install live-build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -26,15 +26,14 @@ jobs:
             xorriso \
             isolinux \
             syslinux-utils \
-            rsync \
-            git
+            rsync
 
-      - name: Show live-build version
+      - name: Show versions
         run: |
           lb --version
           debootstrap --version
 
-      - name: Clean previous build
+      - name: Clean previous live-build state
         working-directory: build
         run: |
           sudo lb clean --purge || true
@@ -55,49 +54,31 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Force correct Debian repositories
+      - name: Verify Debian repository configuration
         working-directory: build
         run: |
-          mkdir -p config/includes.chroot/etc/apt
+          echo "Checking generated configuration..."
 
-          cat > config/includes.chroot/etc/apt/sources.list <<'EOF'
-          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-          deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-          EOF
-
-          echo "===== Raptor OS sources.list ====="
-          cat config/includes.chroot/etc/apt/sources.list
-
-          echo
-          echo "===== Checking repository tree ====="
-
-          if grep -Rni \
-            'bookworm/updates' \
-            config/includes.chroot \
-            config/package-lists \
-            config/hooks \
-            2>/dev/null; then
-
-            echo "ERROR: invalid bookworm/updates repository found."
+          if grep -Rni 'bookworm/updates' config/ 2>/dev/null; then
+            echo "ERROR: Invalid bookworm/updates repository detected."
             exit 1
           fi
 
           if grep -RniE \
             'security\.ubuntu\.com|archive\.ubuntu\.com|ubuntu-keyring' \
-            config/ \
-            2>/dev/null; then
-
-            echo "ERROR: Ubuntu repository configuration found."
+            config/ 2>/dev/null; then
+            echo "ERROR: Ubuntu repository detected."
             exit 1
           fi
+
+          echo "Repository checks passed."
 
       - name: Build Raptor OS
         working-directory: build
         run: |
           sudo lb build
 
-      - name: Verify build
+      - name: Verify ISO
         working-directory: build
         run: |
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
@@ -107,16 +88,15 @@ jobs:
             exit 1
           fi
 
-          echo "===== Raptor OS Security build successful ====="
+          echo "Raptor OS Security build succeeded."
+
           ls -lh "$ISO"
 
           sha256sum "$ISO" > raptor-security.sha256
 
-          echo
-          echo "===== SHA256 ====="
           cat raptor-security.sha256
 
-      - name: Upload updated OS artifact
+      - name: Upload update artifact
         uses: actions/upload-artifact@v4
         with:
           name: Raptor-OS-Security-Update
