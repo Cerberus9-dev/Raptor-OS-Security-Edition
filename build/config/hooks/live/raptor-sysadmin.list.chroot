@@ -1,0 +1,21 @@
+# System administration — spec section 19.
+
+konsole
+dolphin
+gnome-disk-utility
+htop
+btop
+plasma-systemmonitor
+timeshift
+p7zip-full
+unzip
+openssh-client
+openssh-sftp-server
+filezilla
+
+# `journalctl` removed — it was never a real package name, it's the
+# systemd journal command, provided by the `systemd` package that's
+# already part of every Debian system regardless of this list. Listing
+# it here was a mistake, not a naming variant to fix — apt correctly
+# reported "Unable to locate package journalctl" because no such
+# package has ever existed.
