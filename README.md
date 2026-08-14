@@ -4,7 +4,7 @@
 Custom OS based off Debian, designed to be a security and development workstation without being overly bloated or complicated. The Security Edition of the Raptor OS family — boots and runs entirely from USB, keeps the Live session amnesic by default, and treats persistence as something you opt into rather than something that just happens.
 
 > **Heavy W.I.P — Feedback appreciated!**
-> This **is** a Live USB OS — it boots and runs from the stick without touching your existing installation, and needs nothing installed to your internal drive unless you explicitly set up encrypted persistence. Seven core system daemons are implemented; no build has completed end-to-end yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's verified vs. what still needs a real build to confirm.
+> This **is** a Live USB OS — it boots and runs from the stick without touching your existing installation, and needs nothing installed to your internal drive unless you explicitly set up encrypted persistence. Seven core system daemons are implemented; no build has completed end-to-end yet.
 
 ---
 
@@ -44,7 +44,7 @@ sudo lb clean --purge
 sudo lb build
 ```
 
-Requires `live-build`, `debootstrap`, and enough disk (Debian Live builds typically need 15-20+ GB free) and network access to Debian's archive. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)'s pre-build checklist and CI repair log before your first attempt.
+Requires `live-build`, `debootstrap`, and enough disk (Debian Live builds typically need 15-20+ GB free) and network access to Debian's archive.
 
 ---
 
