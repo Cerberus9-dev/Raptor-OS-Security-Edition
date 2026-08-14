@@ -27,6 +27,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cache key includes the current ISO week — deliberately DIFFERENT
+      # from build-iso.yml's permanent content-hash-only key. This
+      # workflow's whole purpose is fetching fresh upstream Debian
+      # updates on a schedule; a permanent cache key would silently
+      # restore last week's packages forever and defeat that entirely.
+      # A weekly-rotating key still speeds up same-week re-runs (e.g. a
+      # manual retry after a transient network failure) without ever
+      # skipping the actual weekly update check.
+      - name: Get cache week
+        id: cache-week
+        run: echo "week=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache live-build stages (weekly)
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'build/auto/config') }}
+          restore-keys: |
+            raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-
+
       - name: Free disk space
         run: |
           sudo rm -rf \
@@ -79,12 +99,13 @@ jobs:
           sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
-      - name: Clean previous build
+      - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
-          sudo lb clean --purge || true
-          sudo rm -rf cache chroot binary .build
+          sudo rm -rf chroot binary .build
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
+          echo "cache/ contents preserved:"
+          du -sh cache 2>/dev/null || echo "cache/ is empty (first run this week, or nothing restored)"
 
       - name: Configure live-build
         working-directory: build
