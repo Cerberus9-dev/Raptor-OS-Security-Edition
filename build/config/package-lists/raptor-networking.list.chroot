@@ -1,0 +1,18 @@
+# Networking — spec section 12.
+
+wireshark
+tshark
+tcpdump
+bind9-dnsutils
+mtr-tiny
+traceroute
+iperf3
+net-tools
+iproute2
+ethtool
+macchanger
+openvpn
+wireguard-tools
+tor
+torsocks
+nyx

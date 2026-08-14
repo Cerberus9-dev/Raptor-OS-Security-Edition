@@ -1,0 +1,35 @@
+# Development workstation — spec section 18.
+
+git
+gitk
+git-gui
+build-essential
+gcc
+g++
+clang
+llvm
+make
+cmake
+ninja-build
+pkg-config
+gdb
+lldb
+python3
+python3-pip
+python3-venv
+nodejs
+npm
+golang-go
+rustc
+cargo
+default-jdk
+podman
+distrobox
+virt-manager
+qemu-system
+
+# NOTE: VS Code / VSCodium is not in Debian main (licensing on upstream
+# VS Code; VSCodium isn't Debian-packaged either). Add via a hook that
+# installs from VSCodium's own apt repo, or ship the codium .deb directly —
+# do not add Microsoft's repo, which conflicts with "Debian-based" intent
+# and pulls in telemetry the spec's privacy focus argues against.
