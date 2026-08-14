@@ -19,6 +19,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Restores build/cache/ from a previous run (each GitHub-hosted
+      # runner is a fresh VM — nothing on disk survives between runs on
+      # its own, this is what actually gives runs continuity). Keyed on
+      # everything that affects what ends up IN the cached chroot —
+      # package lists and the install hooks — so a change to any of
+      # those correctly produces a fresh cache instead of reusing a
+      # stale one. restore-keys falls back to the most recent cache
+      # under any key prefix match if there's no exact hit; live-build's
+      # own internal config comparison (it stores a checksum of the
+      # config that produced each cached stage) is what actually decides
+      # whether a restored-but-imperfect-match cache is still usable, so
+      # a fallback restore is a reasonable bet, not a correctness risk —
+      # worst case, live-build itself decides the cache doesn't apply and
+      # rebuilds that stage anyway.
+      - name: Cache live-build stages
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: raptor-security-lb-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'build/auto/config') }}
+          restore-keys: |
+            raptor-security-lb-${{ runner.os }}-
+
       - name: Free disk space
         run: |
           sudo rm -rf \
@@ -95,12 +117,20 @@ jobs:
           echo "===== confirm VOLATILE lines untouched ====="
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
-      - name: Clean previous build
+      # NOTE: deliberately NOT `lb clean --purge` — that internally calls
+      # `lb clean --cache`, which deletes build/cache/ entirely. That was
+      # silently throwing away live-build's own package/bootstrap/chroot
+      # caching on every single run, on top of the actions/cache restore
+      # above being wasted too. Only remove the ephemeral output
+      # directories; build/cache/ (restored above, or empty on a true
+      # first run) is left alone on purpose.
+      - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
-          sudo lb clean --purge || true
-          sudo rm -rf cache chroot binary .build
+          sudo rm -rf chroot binary .build
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
+          echo "cache/ contents preserved:"
+          du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
 
       - name: Configure live-build
         working-directory: build
