@@ -72,6 +72,29 @@ jobs:
           echo "===== after patch ====="
           grep -n "Contents-" "$LB_FILE" || true
 
+      # Debian renamed the security suite from "<dist>/updates" to
+      # "<dist>-security" in 2023. This live-build version still hardcodes
+      # the old "/updates" form specifically for the *_SECURITY mirror
+      # variables (confirmed by reading /usr/lib/live/build/lb_chroot_archives
+      # directly — the VOLATILE mirror lines already correctly use the
+      # hyphenated form, only SECURITY does not). Without this patch, the
+      # chroot stage writes a security sources.list line pointing at
+      # "bookworm/updates", which 404s against the real archive and fails
+      # the build with "does not have a Release file". Confirmed by an
+      # actual failed CI run before this patch existed — this one is not
+      # speculative.
+      - name: Patch live-build security suite name
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_chroot_archives"
+          echo "===== before patch ====="
+          grep -n "SECURITY" "$LB_FILE" | grep "/updates" || true
+          sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
+          echo "===== after patch ====="
+          grep -n "SECURITY" "$LB_FILE" | grep -- "-security" || true
+          echo "===== confirm VOLATILE lines untouched ====="
+          grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
+
       - name: Clean previous build
         working-directory: build
         run: |
