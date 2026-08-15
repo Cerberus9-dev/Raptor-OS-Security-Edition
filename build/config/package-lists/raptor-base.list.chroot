@@ -40,6 +40,27 @@ nftables
 cryptsetup
 parted
 gparted
+
+# isolinux/syslinux-common: required INSIDE the target chroot, not just
+# on the CI runner. live-build's bundled BIOS bootloader theme (used
+# even though --bootloaders is set to grub-efi — a hybrid ISO needs
+# BOTH BIOS and UEFI boot paths, and live-build adds isolinux for the
+# BIOS side unconditionally) copies its theme files into the chroot,
+# then dereferences symlinks WITHIN the chroot's own filesystem
+# (`Chroot chroot cp -aL ...`, confirmed by reading
+# /usr/lib/live/build/lb_binary_syslinux directly) — so the real
+# isolinux.bin/vesamenu.c32 files these symlinks point to must actually
+# exist inside the built system, not just on the machine running the
+# build. See build-iso.yml/update.yml's "Patch live-build isolinux theme
+# paths" step for the other half of this fix — this live-build version's
+# bundled symlinks also point to a pre-reorg path
+# (/usr/lib/syslinux/isolinux.bin) that no longer exists in current
+# Debian packaging (real path is /usr/lib/ISOLINUX/isolinux.bin,
+# capitalized directory) — same "old live-build, new Debian archive
+# layout" bug pattern as the Contents-<arch>.gz and bookworm/updates
+# fixes already applied elsewhere in this repo.
+isolinux
+syslinux-common
 e2fsprogs
 util-linux
 # lsblk/wipefs/findmnt ship inside util-linux — not separate packages,
