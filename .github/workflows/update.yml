@@ -99,6 +99,15 @@ jobs:
           sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
+      - name: Patch live-build isolinux theme paths
+        run: |
+          set -e
+          THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
+          sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
+          sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
+
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
