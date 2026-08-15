@@ -108,6 +108,19 @@ jobs:
           sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
           sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
 
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
+      - name: Patch live-build rsvg invocation
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
+          sudo sed -i \
+            's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' \
+            "$LB_FILE"
+          sudo sed -i \
+            's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
+            "$LB_FILE"
+
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
