@@ -144,6 +144,33 @@ jobs:
           echo "===== after patch ====="
           ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
 
+      # Same bug family again. librsvg2-bin dropped the old `rsvg`
+      # command-line binary entirely — only `rsvg-convert` exists in any
+      # current version, with different argument syntax (output file is
+      # `-o file.png`, not a second positional argument like the old
+      # tool). Confirmed directly: installed librsvg2-bin here, `which
+      # rsvg` finds nothing, `which rsvg-convert` does, and tested the
+      # exact transformed command against a real SVG before adding this
+      # patch. Reproduced against a real failed CI run (`/usr/bin/env:
+      # 'rsvg': No such file or directory`) — this is the 4th distinct
+      # instance of "old live-build assumption vs. current Debian/Ubuntu
+      # packaging" in this repo; if something else breaks later, suspect
+      # this same category before assuming it's new.
+      - name: Patch live-build rsvg invocation
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
+          echo "===== before patch ====="
+          grep -n "rsvg " "$LB_FILE" || true
+          sudo sed -i \
+            's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' \
+            "$LB_FILE"
+          sudo sed -i \
+            's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
+            "$LB_FILE"
+          echo "===== after patch ====="
+          grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
+
       # NOTE: deliberately NOT `lb clean --purge` — that internally calls
       # `lb clean --cache`, which deletes build/cache/ entirely. That was
       # silently throwing away live-build's own package/bootstrap/chroot
