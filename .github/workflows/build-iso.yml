@@ -117,6 +117,33 @@ jobs:
           echo "===== confirm VOLATILE lines untouched ====="
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
+      # Same live-build-version-vs-modern-Debian-packaging mismatch as
+      # the two patches above. live-build's bundled isolinux theme
+      # symlinks point to /usr/lib/syslinux/isolinux.bin and
+      # /usr/lib/syslinux/vesamenu.c32 — paths that no longer exist in
+      # current isolinux/syslinux-common packaging (confirmed directly:
+      # real files are at /usr/lib/ISOLINUX/isolinux.bin and
+      # /usr/lib/syslinux/modules/bios/vesamenu.c32; no compatibility
+      # symlinks exist at the old locations at all). Without this,
+      # lb_binary_syslinux fails late in the build (after bootstrap +
+      # full package install + manifest creation all already succeeded)
+      # with "cannot stat '/root/isolinux/isolinux.bin'" — reproduced
+      # against a real failed CI run before this fix existed. The other
+      # half of this fix is isolinux/syslinux-common now being installed
+      # INSIDE the chroot too (raptor-base.list.chroot) — these symlinks
+      # get copied into the chroot and dereferenced there, so the real
+      # files need to exist in the built system, not just on the runner.
+      - name: Patch live-build isolinux theme paths
+        run: |
+          set -e
+          THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
+          echo "===== before patch ====="
+          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
+          sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
+          sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
+          echo "===== after patch ====="
+          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
+
       # NOTE: deliberately NOT `lb clean --purge` — that internally calls
       # `lb clean --cache`, which deletes build/cache/ entirely. That was
       # silently throwing away live-build's own package/bootstrap/chroot
