@@ -251,3 +251,21 @@ jobs:
             build/raptor-security.sha256
           compression-level: 0
           retention-days: 30
+
+      # The "Cache live-build stages" step earlier in this job saves
+      # build/cache/ automatically once the job finishes, via a "post"
+      # hook that runs as the normal unprivileged runner user — not
+      # root. Every build step above runs `sudo lb build`/`sudo rm`,
+      # so everything under build/cache/ (downloaded .debs, the cached
+      # bootstrap/chroot stages) is root-owned with permissions that
+      # unprivileged tar can't read, producing exactly the
+      # `/usr/bin/tar failed with exit code 2` warning on cache save.
+      # This doesn't fail the job (upload-artifact above already
+      # succeeded), but it silently means the cache never actually
+      # saves, defeating the entire point of the caching fix — every
+      # run goes back to a cold cache. Fixing by making build/cache/
+      # world-readable right before the job ends, so the automatic
+      # post-hook can actually read what it's trying to archive.
+      - name: Fix cache permissions for save
+        if: always()
+        run: sudo chmod -R a+rX build/cache 2>/dev/null || true
