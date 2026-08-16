@@ -179,3 +179,9 @@ jobs:
             build/raptor-security.sha256
           compression-level: 0
           retention-days: 30
+
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
+      - name: Fix cache permissions for save
+        if: always()
+        run: sudo chmod -R a+rX build/cache 2>/dev/null || true
