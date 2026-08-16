@@ -121,6 +121,22 @@ jobs:
             's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
             "$LB_FILE"
 
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation. Applied to the same file the rsvg patch above
+      # already touched — safe to combine, sed substitution doesn't
+      # shift line numbers, only sed insertion/append does, and this
+      # step's line numbers (365/375) are unaffected by the rsvg patch's
+      # substitutions run just before it.
+      - name: Patch live-build gfxboot bootlogo hack (Debian-mode no-op)
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
+          sudo sed -i \
+            -e '365i if [ -e "${_TARGET}/bootlogo" ]; then' \
+            -e '375a fi' \
+            "$LB_FILE"
+          sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
+
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
