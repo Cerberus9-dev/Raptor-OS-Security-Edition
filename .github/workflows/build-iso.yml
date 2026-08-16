@@ -171,6 +171,37 @@ jobs:
           echo "===== after patch ====="
           grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
 
+      # Different bug from the previous four — not a renamed/moved
+      # package, an actual live-build logic gap. This "hack around
+      # gfxboot" block (lines ~362-375) unconditionally repacks
+      # ${_TARGET}/bootlogo, but that file is ONLY ever created for
+      # LB_MODE=ubuntu builds (extracted from the gfxboot-theme-ubuntu
+      # package — confirmed by reading every reference to bootlogo in
+      # this script). Our build is LB_MODE=debian (confirmed via a real
+      # `lb config` dry-run against this repo's own auto/config), so
+      # that file never exists and this block fails outright. gfxboot
+      # itself isn't used at all in a plain Debian build with the
+      # default "live-build" syslinux theme — boot splash goes through
+      # the separate splash.svg/splash.png path already patched above,
+      # not this gfxboot-specific archive. Fix: skip this whole block
+      # when there's nothing for it to do, which is every Debian-mode
+      # build. Tested by actually running the patched logic (not just
+      # syntax-checking it) against a directory with no bootlogo file,
+      # matching our real condition exactly — completes cleanly.
+      - name: Patch live-build gfxboot bootlogo hack (Debian-mode no-op)
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
+          echo "===== before patch ====="
+          sed -n '362,376p' "$LB_FILE"
+          sudo sed -i \
+            -e '365i if [ -e "${_TARGET}/bootlogo" ]; then' \
+            -e '375a fi' \
+            "$LB_FILE"
+          sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
+          echo "===== after patch ====="
+          sed -n '362,378p' "$LB_FILE"
+
       # NOTE: deliberately NOT `lb clean --purge` — that internally calls
       # `lb clean --cache`, which deletes build/cache/ entirely. That was
       # silently throwing away live-build's own package/bootstrap/chroot
