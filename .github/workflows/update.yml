@@ -68,6 +68,9 @@ jobs:
             xorriso \
             isolinux \
             syslinux-utils \
+            grub-efi-amd64-bin \
+            mtools \
+            dosfstools \
             rsync
 
       - name: Show build tool versions
@@ -165,7 +168,100 @@ jobs:
             echo "ERROR: live-build completed but no ISO was produced."
             exit 1
           fi
-          echo "Raptor OS Security build succeeded:"
+          echo "Raptor OS Security build succeeded (BIOS-only at this point):"
+          ls -lh "$ISO"
+
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation and how each piece was tested before being
+      # added here.
+      - name: Add UEFI boot support (BIOS boot untouched)
+        working-directory: build
+        run: |
+          set -e
+
+          ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          echo "Original BIOS-only ISO: $ORIGINAL_ISO"
+
+          mkdir -p efi-build
+          {
+            printf '%s\n' 'insmod part_gpt'
+            printf '%s\n' 'insmod part_msdos'
+            printf '%s\n' 'insmod fat'
+            printf '%s\n' 'insmod iso9660'
+            printf '%s\n' 'insmod all_video'
+            printf '%s\n' 'insmod gfxterm'
+            printf '\n'
+            printf '%s\n' 'set default="0"'
+            printf '%s\n' 'set timeout=5'
+            printf '\n'
+            printf '%s\n' 'menuentry "Raptor Security (Live)" {'
+            printf '%s\n' '    linux /live/vmlinuz-* boot=live components quiet'
+            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '}'
+            printf '\n'
+            printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
+            printf '%s\n' '    linux /live/vmlinuz-* boot=live components noapic noapm nodma nomce nolapic nosmp'
+            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '}'
+          } > efi-build/grub.cfg
+
+          grub-mkstandalone \
+            --format=x86_64-efi \
+            --output=efi-build/BOOTX64.EFI \
+            --locales="" \
+            --fonts="" \
+            "boot/grub/grub.cfg=efi-build/grub.cfg"
+
+          file efi-build/BOOTX64.EFI | grep -q "PE32+ executable" || {
+            echo "ERROR: grub-mkstandalone did not produce a valid EFI executable"
+            exit 1
+          }
+
+          mkdir -p efi-build/esp/EFI/BOOT
+          cp efi-build/BOOTX64.EFI efi-build/esp/EFI/BOOT/BOOTX64.EFI
+          dd if=/dev/zero of=efi-build/efiboot.img bs=1M count=16
+          mkfs.vfat -F 16 -n "RAPTOR_EFI" efi-build/efiboot.img
+          mmd -i efi-build/efiboot.img ::/EFI
+          mmd -i efi-build/efiboot.img ::/EFI/BOOT
+          mcopy -i efi-build/efiboot.img efi-build/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+
+          mkdir -p binary/EFI/BOOT
+          cp efi-build/BOOTX64.EFI binary/EFI/BOOT/BOOTX64.EFI
+
+          cd binary
+          xorriso -as mkisofs \
+            -r -J -l -cache-inodes -allow-multidot \
+            -A "Raptor Security" \
+            -publisher "Raptor OS Project" \
+            -V "RAPTOR-SECURITY" \
+            -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -b isolinux/isolinux.bin -c isolinux/boot.cat \
+            -eltorito-alt-boot \
+            -e --interval:appended_partition_2:all:: \
+            -no-emul-boot \
+            -append_partition 2 0xef ../efi-build/efiboot.img \
+            -isohybrid-gpt-basdat \
+            -o "../${ORIGINAL_ISO}.uefi" \
+            .
+          cd ..
+
+          ENTRY_COUNT=$(xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep -c "El Torito boot img" || true)
+          if [ "$ENTRY_COUNT" -lt 2 ]; then
+            echo "ERROR: rebuilt ISO does not have both BIOS and UEFI boot entries."
+            echo "Falling back to the original BIOS-only ISO — nothing is lost, UEFI just isn't added this run."
+            rm -f "${ORIGINAL_ISO}.uefi"
+          else
+            echo "Confirmed: rebuilt ISO has both BIOS and UEFI boot entries."
+            xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep "El Torito boot img"
+            mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
+          fi
+
+      - name: Compute checksum
+        working-directory: build
+        run: |
+          set -e
+          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          echo "Final ISO:"
           ls -lh "$ISO"
           sha256sum "$ISO" > raptor-security.sha256
           cat raptor-security.sha256
