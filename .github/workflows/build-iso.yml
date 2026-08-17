@@ -1,45 +1,51 @@
-name: Build Raptor OS Security ISO
+name: Build Raptor OS Security Update
+
+# Unlike build-iso.yml (manual only, matches home edition's convention for
+# fresh-install images), this one also runs weekly — Security Edition is a
+# Live ISO people re-download and re-flash rather than an atomically
+# updatable image like home edition's Bazzite base, so a scheduled rebuild
+# is how it picks up upstream Debian package/security updates at all.
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 0" # weekly, Sunday 05:00 UTC
 
 permissions:
   contents: read
 
 concurrency:
-  group: raptor-security-build
+  group: raptor-security-update
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build Raptor OS Security ISO
+  update:
+    name: Rebuild Raptor OS Security
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Restores build/cache/ from a previous run (each GitHub-hosted
-      # runner is a fresh VM — nothing on disk survives between runs on
-      # its own, this is what actually gives runs continuity). Keyed on
-      # everything that affects what ends up IN the cached chroot —
-      # package lists and the install hooks — so a change to any of
-      # those correctly produces a fresh cache instead of reusing a
-      # stale one. restore-keys falls back to the most recent cache
-      # under any key prefix match if there's no exact hit; live-build's
-      # own internal config comparison (it stores a checksum of the
-      # config that produced each cached stage) is what actually decides
-      # whether a restored-but-imperfect-match cache is still usable, so
-      # a fallback restore is a reasonable bet, not a correctness risk —
-      # worst case, live-build itself decides the cache doesn't apply and
-      # rebuilds that stage anyway.
-      - name: Cache live-build stages
+      # Cache key includes the current ISO week — deliberately DIFFERENT
+      # from build-iso.yml's permanent content-hash-only key. This
+      # workflow's whole purpose is fetching fresh upstream Debian
+      # updates on a schedule; a permanent cache key would silently
+      # restore last week's packages forever and defeat that entirely.
+      # A weekly-rotating key still speeds up same-week re-runs (e.g. a
+      # manual retry after a transient network failure) without ever
+      # skipping the actual weekly update check.
+      - name: Get cache week
+        id: cache-week
+        run: echo "week=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache live-build stages (weekly)
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'build/auto/config') }}
+          key: raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'build/auto/config') }}
           restore-keys: |
-            raptor-security-lb-${{ runner.os }}-
+            raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-
 
       - name: Free disk space
         run: |
@@ -62,6 +68,9 @@ jobs:
             xorriso \
             isolinux \
             syslinux-utils \
+            grub-efi-amd64-bin \
+            mtools \
+            dosfstools \
             rsync
 
       - name: Show build tool versions
@@ -69,153 +78,75 @@ jobs:
           lb --version
           debootstrap --version
 
-      # This live-build package (3.0~a57-1ubuntu49.1 on ubuntu-24.04
-      # runners at time of writing) ships lb_chroot_linux-image with a
-      # 2012-era Contents index path that predates Debian moving that
-      # file under dists/<suite>/main/ instead of dists/<suite>/ directly.
-      # Verified directly against the installed package before adding
-      # this patch — grep the file yourself if the live-build version
-      # ever changes, since a newer package may have already fixed this
-      # upstream and this step would then be a silent no-op (the sed
-      # won't match, won't error, and won't do anything — safe either
-      # way, but worth knowing which case you're in).
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation. Kept identical between the two workflows
+      # deliberately, so there's exactly one place this ever needs
+      # updating if the live-build package changes.
       - name: Patch live-build Contents index lookup
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_chroot_linux-image"
-          echo "===== before patch ====="
-          grep -n "Contents-" "$LB_FILE" || true
           sudo sed -i \
             's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
             "$LB_FILE"
           sudo sed -i \
             's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
             "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "Contents-" "$LB_FILE" || true
 
-      # Debian renamed the security suite from "<dist>/updates" to
-      # "<dist>-security" in 2023. This live-build version still hardcodes
-      # the old "/updates" form specifically for the *_SECURITY mirror
-      # variables (confirmed by reading /usr/lib/live/build/lb_chroot_archives
-      # directly — the VOLATILE mirror lines already correctly use the
-      # hyphenated form, only SECURITY does not). Without this patch, the
-      # chroot stage writes a security sources.list line pointing at
-      # "bookworm/updates", which 404s against the real archive and fails
-      # the build with "does not have a Release file". Confirmed by an
-      # actual failed CI run before this patch existed — this one is not
-      # speculative.
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation and how it was confirmed against a real failed run.
       - name: Patch live-build security suite name
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_chroot_archives"
-          echo "===== before patch ====="
-          grep -n "SECURITY" "$LB_FILE" | grep "/updates" || true
           sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "SECURITY" "$LB_FILE" | grep -- "-security" || true
-          echo "===== confirm VOLATILE lines untouched ====="
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
-      # Same live-build-version-vs-modern-Debian-packaging mismatch as
-      # the two patches above. live-build's bundled isolinux theme
-      # symlinks point to /usr/lib/syslinux/isolinux.bin and
-      # /usr/lib/syslinux/vesamenu.c32 — paths that no longer exist in
-      # current isolinux/syslinux-common packaging (confirmed directly:
-      # real files are at /usr/lib/ISOLINUX/isolinux.bin and
-      # /usr/lib/syslinux/modules/bios/vesamenu.c32; no compatibility
-      # symlinks exist at the old locations at all). Without this,
-      # lb_binary_syslinux fails late in the build (after bootstrap +
-      # full package install + manifest creation all already succeeded)
-      # with "cannot stat '/root/isolinux/isolinux.bin'" — reproduced
-      # against a real failed CI run before this fix existed. The other
-      # half of this fix is isolinux/syslinux-common now being installed
-      # INSIDE the chroot too (raptor-base.list.chroot) — these symlinks
-      # get copied into the chroot and dereferenced there, so the real
-      # files need to exist in the built system, not just on the runner.
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
       - name: Patch live-build isolinux theme paths
         run: |
           set -e
           THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
-          echo "===== before patch ====="
-          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
           sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
           sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
-          echo "===== after patch ====="
-          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
 
-      # Same bug family again. librsvg2-bin dropped the old `rsvg`
-      # command-line binary entirely — only `rsvg-convert` exists in any
-      # current version, with different argument syntax (output file is
-      # `-o file.png`, not a second positional argument like the old
-      # tool). Confirmed directly: installed librsvg2-bin here, `which
-      # rsvg` finds nothing, `which rsvg-convert` does, and tested the
-      # exact transformed command against a real SVG before adding this
-      # patch. Reproduced against a real failed CI run (`/usr/bin/env:
-      # 'rsvg': No such file or directory`) — this is the 4th distinct
-      # instance of "old live-build assumption vs. current Debian/Ubuntu
-      # packaging" in this repo; if something else breaks later, suspect
-      # this same category before assuming it's new.
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
       - name: Patch live-build rsvg invocation
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          echo "===== before patch ====="
-          grep -n "rsvg " "$LB_FILE" || true
           sudo sed -i \
             's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' \
             "$LB_FILE"
           sudo sed -i \
             's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
             "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
 
-      # Different bug from the previous four — not a renamed/moved
-      # package, an actual live-build logic gap. This "hack around
-      # gfxboot" block (lines ~362-375) unconditionally repacks
-      # ${_TARGET}/bootlogo, but that file is ONLY ever created for
-      # LB_MODE=ubuntu builds (extracted from the gfxboot-theme-ubuntu
-      # package — confirmed by reading every reference to bootlogo in
-      # this script). Our build is LB_MODE=debian (confirmed via a real
-      # `lb config` dry-run against this repo's own auto/config), so
-      # that file never exists and this block fails outright. gfxboot
-      # itself isn't used at all in a plain Debian build with the
-      # default "live-build" syslinux theme — boot splash goes through
-      # the separate splash.svg/splash.png path already patched above,
-      # not this gfxboot-specific archive. Fix: skip this whole block
-      # when there's nothing for it to do, which is every Debian-mode
-      # build. Tested by actually running the patched logic (not just
-      # syntax-checking it) against a directory with no bootlogo file,
-      # matching our real condition exactly — completes cleanly.
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation. Applied to the same file the rsvg patch above
+      # already touched — safe to combine, sed substitution doesn't
+      # shift line numbers, only sed insertion/append does, and this
+      # step's line numbers (365/375) are unaffected by the rsvg patch's
+      # substitutions run just before it.
       - name: Patch live-build gfxboot bootlogo hack (Debian-mode no-op)
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          echo "===== before patch ====="
-          sed -n '362,376p' "$LB_FILE"
           sudo sed -i \
             -e '365i if [ -e "${_TARGET}/bootlogo" ]; then' \
             -e '375a fi' \
             "$LB_FILE"
           sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
-          echo "===== after patch ====="
-          sed -n '362,378p' "$LB_FILE"
 
-      # NOTE: deliberately NOT `lb clean --purge` — that internally calls
-      # `lb clean --cache`, which deletes build/cache/ entirely. That was
-      # silently throwing away live-build's own package/bootstrap/chroot
-      # caching on every single run, on top of the actions/cache restore
-      # above being wasted too. Only remove the ephemeral output
-      # directories; build/cache/ (restored above, or empty on a true
-      # first run) is left alone on purpose.
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
           sudo rm -rf chroot binary .build
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
           echo "cache/ contents preserved:"
-          du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
+          du -sh cache 2>/dev/null || echo "cache/ is empty (first run this week, or nothing restored)"
 
       - name: Configure live-build
         working-directory: build
@@ -224,7 +155,7 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      - name: Build ISO
+      - name: Build updated ISO
         working-directory: build
         run: sudo lb build
 
@@ -237,35 +168,116 @@ jobs:
             echo "ERROR: live-build completed but no ISO was produced."
             exit 1
           fi
-          echo "ISO successfully built:"
+          echo "Raptor OS Security build succeeded (BIOS-only at this point):"
+          ls -lh "$ISO"
+
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation and how each piece was tested before being
+      # added here.
+      - name: Add UEFI boot support (BIOS boot untouched)
+        working-directory: build
+        run: |
+          set -e
+
+          ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          echo "Original BIOS-only ISO: $ORIGINAL_ISO"
+
+          mkdir -p efi-build
+          {
+            printf '%s\n' 'insmod part_gpt'
+            printf '%s\n' 'insmod part_msdos'
+            printf '%s\n' 'insmod fat'
+            printf '%s\n' 'insmod iso9660'
+            printf '%s\n' 'insmod all_video'
+            printf '%s\n' 'insmod gfxterm'
+            printf '\n'
+            printf '%s\n' 'set default="0"'
+            printf '%s\n' 'set timeout=5'
+            printf '\n'
+            printf '%s\n' 'menuentry "Raptor Security (Live)" {'
+            printf '%s\n' '    linux /live/vmlinuz-* boot=live components quiet'
+            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '}'
+            printf '\n'
+            printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
+            printf '%s\n' '    linux /live/vmlinuz-* boot=live components noapic noapm nodma nomce nolapic nosmp'
+            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '}'
+          } > efi-build/grub.cfg
+
+          grub-mkstandalone \
+            --format=x86_64-efi \
+            --output=efi-build/BOOTX64.EFI \
+            --locales="" \
+            --fonts="" \
+            "boot/grub/grub.cfg=efi-build/grub.cfg"
+
+          file efi-build/BOOTX64.EFI | grep -q "PE32+ executable" || {
+            echo "ERROR: grub-mkstandalone did not produce a valid EFI executable"
+            exit 1
+          }
+
+          mkdir -p efi-build/esp/EFI/BOOT
+          cp efi-build/BOOTX64.EFI efi-build/esp/EFI/BOOT/BOOTX64.EFI
+          dd if=/dev/zero of=efi-build/efiboot.img bs=1M count=16
+          mkfs.vfat -F 16 -n "RAPTOR_EFI" efi-build/efiboot.img
+          mmd -i efi-build/efiboot.img ::/EFI
+          mmd -i efi-build/efiboot.img ::/EFI/BOOT
+          mcopy -i efi-build/efiboot.img efi-build/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
+
+          mkdir -p binary/EFI/BOOT
+          cp efi-build/BOOTX64.EFI binary/EFI/BOOT/BOOTX64.EFI
+
+          cd binary
+          xorriso -as mkisofs \
+            -r -J -l -cache-inodes -allow-multidot \
+            -A "Raptor Security" \
+            -publisher "Raptor OS Project" \
+            -V "RAPTOR-SECURITY" \
+            -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -b isolinux/isolinux.bin -c isolinux/boot.cat \
+            -eltorito-alt-boot \
+            -e --interval:appended_partition_2:all:: \
+            -no-emul-boot \
+            -append_partition 2 0xef ../efi-build/efiboot.img \
+            -isohybrid-gpt-basdat \
+            -o "../${ORIGINAL_ISO}.uefi" \
+            .
+          cd ..
+
+          ENTRY_COUNT=$(xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep -c "El Torito boot img" || true)
+          if [ "$ENTRY_COUNT" -lt 2 ]; then
+            echo "ERROR: rebuilt ISO does not have both BIOS and UEFI boot entries."
+            echo "Falling back to the original BIOS-only ISO — nothing is lost, UEFI just isn't added this run."
+            rm -f "${ORIGINAL_ISO}.uefi"
+          else
+            echo "Confirmed: rebuilt ISO has both BIOS and UEFI boot entries."
+            xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep "El Torito boot img"
+            mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
+          fi
+
+      - name: Compute checksum
+        working-directory: build
+        run: |
+          set -e
+          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          echo "Final ISO:"
           ls -lh "$ISO"
           sha256sum "$ISO" > raptor-security.sha256
           cat raptor-security.sha256
 
-      - name: Upload ISO artifact
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: Raptor-OS-Security-ISO
+          name: Raptor-OS-Security-Update
           path: |
             build/*.iso
             build/raptor-security.sha256
           compression-level: 0
           retention-days: 30
 
-      # The "Cache live-build stages" step earlier in this job saves
-      # build/cache/ automatically once the job finishes, via a "post"
-      # hook that runs as the normal unprivileged runner user — not
-      # root. Every build step above runs `sudo lb build`/`sudo rm`,
-      # so everything under build/cache/ (downloaded .debs, the cached
-      # bootstrap/chroot stages) is root-owned with permissions that
-      # unprivileged tar can't read, producing exactly the
-      # `/usr/bin/tar failed with exit code 2` warning on cache save.
-      # This doesn't fail the job (upload-artifact above already
-      # succeeded), but it silently means the cache never actually
-      # saves, defeating the entire point of the caching fix — every
-      # run goes back to a cold cache. Fixing by making build/cache/
-      # world-readable right before the job ends, so the automatic
-      # post-hook can actually read what it's trying to archive.
+      # Same fix as build-iso.yml — see that workflow's comment for the
+      # full explanation.
       - name: Fix cache permissions for save
         if: always()
         run: sudo chmod -R a+rX build/cache 2>/dev/null || true
