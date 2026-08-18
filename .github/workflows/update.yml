@@ -182,6 +182,10 @@ jobs:
           ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
           echo "Original BIOS-only ISO: $ORIGINAL_ISO"
 
+          # Same fix as build-iso.yml — see that workflow's comment for
+          # the full explanation.
+          sudo chmod -R a+rwX binary "$ORIGINAL_ISO"
+
           mkdir -p efi-build
           {
             printf '%s\n' 'insmod part_gpt'
