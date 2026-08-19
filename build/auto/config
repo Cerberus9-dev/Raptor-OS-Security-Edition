@@ -3,7 +3,6 @@ set -e
 
 lb config noauto \
   --mode debian \
-  --systemd true \
   --ignore-system-defaults \
   --architectures amd64 \
   --distribution bookworm \
