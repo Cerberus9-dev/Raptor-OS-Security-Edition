@@ -7,7 +7,7 @@ mkdir -p "$CONF_DIR"
 ACTION="${1:-on}"
 
 if [ "${ACTION,,}" = "on" ]; then
-    # Block wireless radios & drop all packet processing
+    # 1. Sever physical radios & drop all packet processing instantly
     rfkill block all 2>/dev/null || true
     nft flush ruleset
     nft -f - <<EOF
@@ -18,10 +18,16 @@ table inet killswitch {
 }
 EOF
     touch "${CONF_DIR}/killswitch_active"
+
+    # 2. Trigger asynchronous background RAM wipe
+    systemctl start raptor-ramwipe-now.service 2>/dev/null || true
+
 else
-    # Restore wireless radios & re-apply current mode firewall rules
+    # Stop any active background wipe job & restore radios/firewall
+    systemctl stop raptor-ramwipe-now.service 2>/dev/null || true
     rfkill unblock all 2>/dev/null || true
     rm -f "${CONF_DIR}/killswitch_active"
+    
     MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURITY")
     /usr/local/bin/raptor-security "${MODE,,}"
 fi
