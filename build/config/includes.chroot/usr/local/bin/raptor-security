@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONF_DIR="/etc/raptor"
+STATE_FILE="${CONF_DIR}/current_mode"
+
+mkdir -p "$CONF_DIR"
+mkdir -p "${CONF_DIR}/modes"
+
+MODE="${1:-status}"
+
+set_mode() {
+    TARGET_MODE="$1"
+    echo "$TARGET_MODE" > "$STATE_FILE"
+    
+    # Apply Kernel Hardening Parameters
+    if [[ "$TARGET_MODE" == "hardened" || "$TARGET_MODE" == "lockdown" ]]; then
+        sysctl -w net.ipv4.conf.all.rp_filter=1 >/dev/null 2>&1 || true
+        sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 >/dev/null 2>&1 || true
+        sysctl -w kernel.kptr_restrict=2 >/dev/null 2>&1 || true
+    fi
+
+    # Trigger Firewall Engine
+    /usr/local/bin/raptor-firewall "$TARGET_MODE"
+    echo "Raptor Security Mode switched to: ${TARGET_MODE^^}"
+}
+
+case "$MODE" in
+    secure|hardened|lockdown)
+        set_mode "$MODE"
+        ;;
+    status)
+        CURRENT=$(cat "$STATE_FILE" 2>/dev/null || echo "SECURE")
+        echo "Current Raptor Security Mode: ${CURRENT^^}"
+        ;;
+    *)
+        echo "Usage: raptor-security {secure|hardened|lockdown|status}"
+        exit 1
+        ;;
+esac
