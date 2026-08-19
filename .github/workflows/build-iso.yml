@@ -40,12 +40,14 @@ jobs:
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
+          mkdir -p build/config/package-lists
           cat << 'EOF' > build/config/archives/librewolf.list.chroot
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
           cat << 'EOF' > build/config/archives/librewolf.list.binary
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
+          echo "ca-certificates" >> build/config/package-lists/security.list.chroot
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
@@ -63,7 +65,6 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --bootstrap-includes "ca-certificates" \
             --security true
           sudo lb build 2>&1 | sudo tee build.log
       - name: Prepare Artifact
