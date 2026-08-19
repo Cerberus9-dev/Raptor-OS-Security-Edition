@@ -227,6 +227,28 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
+      # Defensive fix for a real failure seen mid-build: apt-key inside
+      # the chroot failing with "Couldn't create temporary file
+      # /tmp/apt.conf.XXXXXX" during the binary stage's chroot copy —
+      # after bootstrap, full package install, and the chroot cache
+      # save had ALL already succeeded, so this isn't a package or path
+      # problem like every other fix in this workflow.
+      #
+      # Being honest about confidence here, unlike every other patch in
+      # this file: I could not reproduce or fully verify this one. The
+      # closest documented match (a near-identical vmdb2/libpam-tmpdir
+      # bug report) is a host TMPDIR pointing at a path that doesn't
+      # exist inside a chroot, preserved through by the tool that
+      # invokes the chroot — but I also found evidence GitHub's
+      # ubuntu-latest runners don't set TMPDIR by default, which
+      # weakens that specific explanation for this specific case. This
+      # applies two independent, low-risk defensive fixes rather than
+      # betting on one unverified guess:
+      - name: Ensure a clean, valid TMPDIR before building
+        run: |
+          unset TMPDIR
+          echo "TMPDIR=/tmp" >> "$GITHUB_ENV"
+
       - name: Build ISO
         working-directory: build
         run: sudo lb build
