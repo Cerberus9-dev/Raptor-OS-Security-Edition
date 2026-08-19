@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-security}"
+
+case "$MODE" in
+  security)
+    echo "[Raptor] Activating Security Profile..."
+    rfkill unblock all
+    systemctl restart dnscrypt-proxy
+    systemctl restart tor
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0\; policy drop\; \}
+    nft add chain inet filter output \{ type filter hook output priority 0\; policy accept\; \}
+    nft add rule inet filter input iifname "lo" accept
+    nft add rule inet filter input ct state established,related accept
+    ;;
+
+  hardened)
+    echo "[Raptor] Activating Hardened Profile..."
+    rfkill unblock all
+    macchanger -r eth0 2>/dev/null || true
+    macchanger -r wlan0 2>/dev/null || true
+    systemctl restart dnscrypt-proxy
+    systemctl restart tor
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0\; policy drop\; \}
+    nft add chain inet filter output \{ type filter hook output priority 0\; policy drop\; \}
+    nft add rule inet filter output oifname "lo" accept
+    nft add rule inet filter output skuid "debian-tor" accept
+    nft add rule inet filter input ct state established,related accept
+    ;;
+
+  lockdown)
+    echo "[Raptor] Activating Lockdown Profile..."
+    rfkill block all
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0\; policy drop\; \}
+    nft add chain inet filter output \{ type filter hook output priority 0\; policy drop\; \}
+    sdmem -f -ll || true
+    ;;
+
+  *)
+    echo "Usage: $0 {security|hardened|lockdown}"
+    exit 1
+    ;;
+esac
