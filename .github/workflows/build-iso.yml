@@ -3,9 +3,13 @@ name: Raptor OS ISO Build Pipeline
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   validate-and-build:
@@ -67,7 +71,7 @@ jobs:
             exit 1
           fi
 
-      - name: Upload ISO Artifacts
+      - name: Upload Actions Pipeline Artifact
         uses: actions/upload-artifact@v4
         with:
           name: raptor-os-security-iso
@@ -75,3 +79,15 @@ jobs:
             build/raptor-os-security-amd64.iso
             build/raptor-os-security-amd64.iso.sha256
           retention-days: 7
+
+      - name: Publish Raw Uncompressed ISO to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/raptor-os-security-amd64.iso
+            build/raptor-os-security-amd64.iso.sha256
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
