@@ -1,74 +1,89 @@
-# Base system, desktop environment, and infrastructure common to every mode.
-# Keep this list to what's genuinely required at all times — everything else
-# belongs in a category-specific list so the default ISO doesn't balloon
-# (spec section 21).
-
-task-kde-desktop
-plasma-workspace
-sddm
-network-manager
+# Base System & Desktop Environment
+task-desktop
+xfce4
+xfce4-goodies
+lightdm
 network-manager-gnome
+calamares
+calamares-settings-debian
+sudo
+curl
+wget
+git
+zsh
+tmux
+
+# Hardware, Firmware & GPU Support
 firmware-linux
 firmware-linux-nonfree
-firmware-misc-nonfree
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+bluetooth
+bluez
 
-# Live-environment core
-live-boot
-live-config
-live-tools
-
-# D-Bus / policykit — required by mode-manager and security-center
-dbus
-policykit-1
-python3-dbus
-python3-gi
-gir1.2-glib-2.0
-gir1.2-gtk-4.0
-gir1.2-adw-1
-
-# NOTE: mode-manager and security-center are written against `pydbus`.
-# I have NOT verified python3-pydbus is a real bookworm package name —
-# pydbus is often pip-only. If apt can't find it, either pip-install into
-# a venv via a chroot hook, or port both apps to python3-dbus (already
-# listed above) + GLib mainloop instead, which is stdlib-adjacent and
-# definitely available. Flagging rather than guessing.
-
-# Firewall backend used by Mode Manager
+# Core Security & Firewalls
 nftables
+ufw
+apparmor
+apparmor-utils
+auditd
+fail2ban
+macchanger
 
-# Disk/encryption tooling needed for persistence + Emergency Shutdown
-cryptsetup
-parted
-gparted
+# Reconnaissance & OSINT
+nmap
+masscan
+dnsutils
+whois
+netcat-openbsd
+theharvester
+dnsrecon
 
-# isolinux/syslinux-common/syslinux-utils: required INSIDE the target
-# chroot, not just on the CI runner. live-build's bundled BIOS
-# bootloader theme (used even though --bootloaders is set to grub-efi —
-# a hybrid ISO needs BOTH BIOS and UEFI boot paths, and live-build adds
-# isolinux for the BIOS side unconditionally) copies its theme files
-# into the chroot, then dereferences symlinks WITHIN the chroot's own
-# filesystem
-# (`Chroot chroot cp -aL ...`, confirmed by reading
-# /usr/lib/live/build/lb_binary_syslinux directly) — so the real
-# isolinux.bin/vesamenu.c32 files these symlinks point to must actually
-# exist inside the built system, not just on the machine running the
-# build. See build-iso.yml/update.yml's "Patch live-build isolinux theme
-# paths" step for the other half of this fix — this live-build version's
-# bundled symlinks also point to a pre-reorg path
-# (/usr/lib/syslinux/isolinux.bin) that no longer exists in current
-# Debian packaging (real path is /usr/lib/ISOLINUX/isolinux.bin,
-# capitalized directory) — same "old live-build, new Debian archive
-# layout" bug pattern as the Contents-<arch>.gz and bookworm/updates
-# fixes already applied elsewhere in this repo. syslinux-utils added
-# for the same underlying reason: `isohybrid` (needed by
-# lb_binary_iso's generated binary.sh, also run via `Chroot chroot`)
-# lives in syslinux-utils, not the bare "syslinux" package live-build's
-# own Check_package call assumes — confirmed directly by installing
-# syslinux-utils and checking its actual file list.
-isolinux
-syslinux-common
-syslinux-utils
-e2fsprogs
-util-linux
-# lsblk/wipefs/findmnt ship inside util-linux — not separate packages,
-# not listed individually to avoid an apt error on a nonexistent name.
+# Network Analysis & Traffic Auditing
+wireshark
+tshark
+tcpdump
+traceroute
+iperf3
+ettercap-graphical
+dsniff
+
+# Web Security Testing
+owasp-zap
+curl
+nikto
+sqlmap
+ffuf
+
+# Password Auditing & Cryptanalysis
+john
+hashcat
+hydra
+
+# Digital Forensics & Reverse Engineering
+sleuthkit
+autopsy
+binwalk
+gdb
+radare2
+hexedit
+exiftool
+
+# Wireless Security
+aircrack-ng
+kismet
+reaver
+
+# Development & System Scripting
+build-essential
+gcc
+g++
+make
+python3
+python3-pip
+python3-gi
+gir1.2-gtk-3.0
+rustc
+cargo
+code
