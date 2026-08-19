@@ -1,121 +1,130 @@
-name: Raptor OS ISO Build Pipeline
+name: Build Raptor Security Edition ISO
 
 on:
   push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
+    branches: [ "main", "master" ]
+    tags: [ "v*.*.*" ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      release_type:
+        description: 'Build Release Type'
+        required: true
+        default: 'nightly'
+        type: choice
+        options:
+          - nightly
+          - stable
+      debug_build:
+        description: 'Enable verbose build output'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  validate-and-build:
-    name: Validate and Build Raptor OS ISO
+  build-security-iso:
+    name: Validate & Build Raptor Security ISO
     runs-on: ubuntu-latest
-    container:
-      image: debian:bookworm
-      options: --privileged
+    permissions:
+      contents: write
+      actions: read
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Set Build Environment Variables
+        run: |
+          BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
+          VERSION_TAG="${GITHUB_REF_NAME:-security-nightly}"
+          SAFE_VERSION=$(echo "$VERSION_TAG" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          
+          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
+          echo "ISO_FILENAME=raptor-security-${SAFE_VERSION}-${BUILD_DATE}-amd64.iso" >> $GITHUB_ENV
 
       - name: Install System Build Dependencies
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
             live-build \
-            gdisk \
+            debootstrap \
+            squashfs-tools \
             xorriso \
-            file \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            mtools \
+            dosfstools \
             python3 \
-            bash \
-            ca-certificates \
-            wget \
-            git
+            coreutils \
+            file
 
-      - name: Auto-Fix Permissions & Normalize Filenames
-        run: |
-          # Normalize filenames with spaces in hooks directory
-          for file in build/config/hooks/live/*\ *; do
-            if [ -f "$file" ]; then
-              newfile=$(echo "$file" | tr ' ' '-')
-              mv "$file" "$newfile"
-              echo "Normalized: '$file' -> '$newfile'"
-            fi
-          done
-
-          # Force executable permissions across all scripts
-          chmod -R +x build/config/includes.chroot/usr/local/bin/ || true
-          chmod -R +x build/config/hooks/live/ || true
-          chmod -R +x build/scripts/ || true
-
-      - name: Fetch Third-Party Repository GPG Keys
+      - name: Configure LibreWolf Repository (No Key Download)
         run: |
           mkdir -p build/config/archives
-          wget -O build/config/archives/librewolf.key.chroot https://deb.librewolf.net/keyring.gpg
+          cat << 'EOF' > build/config/archives/librewolf.list.chroot
+          deb [trusted=yes] https://deb.librewolf.net bookworm main
+          EOF
+          cat << 'EOF' > build/config/archives/librewolf.list.binary
+          deb [trusted=yes] https://deb.librewolf.net bookworm main
+          EOF
 
-      - name: Run Pre-Build Validation
+      - name: Cache APT Package Archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-raptor-security-apt-${{ hashFiles('build/config/package-lists/*') }}
+          restore-keys: |
+            ${{ runner.os }}-raptor-security-apt-
+
+      - name: Run Repository Pre-Build Validation
         run: |
+          chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh
 
-      - name: Clean & Configure live-build
+      - name: Execute Live-Build ISO Pipeline
         run: |
           cd build
-          lb clean --purge
-          lb config \
-            --architectures amd64 \
-            --distribution bookworm \
-            --archive-areas "main contrib non-free non-free-firmware" \
-            --debian-installer live \
-            --bootloader syslinux \
-            --iso-application "Raptor OS Security Edition" \
-            --iso-volume "RAPTOR_OS_DEV"
-
-      - name: Execute ISO Build
-        run: |
-          cd build
-          lb build 2>&1 | tee build.log
-
-      - name: Upload Build Log on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: raptor-os-build-log
-          path: build/build.log
-          retention-days: 7
-
-      - name: Generate SHA-256 Checksum
-        run: |
-          cd build
-          if [ -f live-image-amd64.hybrid.iso ]; then
-            mv live-image-amd64.hybrid.iso raptor-os-security-amd64.iso
-            sha256sum raptor-os-security-amd64.iso > raptor-os-security-amd64.iso.sha256
+          sudo lb clean --purge
+          
+          if [ "${{ inputs.debug_build }}" = "true" ]; then
+            sudo lb config --verbose
+            sudo lb build 2>&1 | sudo tee build.log
           else
-            echo "::error::ISO file generation failed! Check build.log artifact for live-build errors."
+            sudo lb build 2>&1 | sudo tee build.log
+          fi
+
+      - name: Verify Artifacts & Calculate Hashes
+        if: success()
+        run: |
+          cd build
+          GENERATED_ISO=$(find . -maxdepth 1 -name "*.iso" | head -n 1)
+          
+          if [ -z "$GENERATED_ISO" ]; then
+            echo "[ERROR] ISO generation failed: No .iso file created."
             exit 1
           fi
 
-      - name: Upload Actions Pipeline Artifact
+          mv "$GENERATED_ISO" "${{ env.ISO_FILENAME }}"
+          sha256sum "${{ env.ISO_FILENAME }}" > "${{ env.ISO_FILENAME }}.sha256"
+          
+          echo "Successfully generated: ${{ env.ISO_FILENAME }}"
+          cat "${{ env.ISO_FILENAME }}.sha256"
+
+      - name: Upload ISO & SHA-256 Checksum Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: raptor-os-security-iso
+          name: raptor-security-iso-${{ env.BUILD_DATE }}
           path: |
-            build/raptor-os-security-amd64.iso
-            build/raptor-os-security-amd64.iso.sha256
-          retention-days: 7
+            build/${{ env.ISO_FILENAME }}
+            build/${{ env.ISO_FILENAME }}.sha256
+          retention-days: 14
 
-      - name: Publish Raw Uncompressed ISO to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Upload Failure Logs on Error
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            build/raptor-os-security-amd64.iso
-            build/raptor-os-security-amd64.iso.sha256
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: raptor-security-build-failure-log
+          path: build/build.log
+          retention-days: 7
