@@ -98,7 +98,6 @@ jobs:
             --linux-packages linux-image \
             --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
-            --debootstrap-options "--include=ca-certificates,apt-transport-https" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
