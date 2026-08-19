@@ -10,7 +10,6 @@ jobs:
     name: Build Raptor Security ISO
     runs-on: ubuntu-22.04
     timeout-minutes: 60
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -19,14 +18,13 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo sed -i 's|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-          sudo sed -i 's|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-
+          sudo sed -E -i 's#https?://archive\.ubuntu\.com#http://azure.archive.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -E -i 's#https?://security\.ubuntu\.com#http://azure.archive.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
           sudo apt-get update \
             -o Acquire::ForceIPv4=true \
             -o Acquire::http::Timeout=5 \
+            -o Acquire::https::Timeout=5 \
             -o Acquire::Retries=3
-
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             -o Dpkg::Options::="--force-confdef" \
             -o Dpkg::Options::="--force-confold" \
@@ -77,15 +75,12 @@ jobs:
         run: |
           cd build
           GENERATED_ISO=$(find . -maxdepth 1 -name "*.iso" | head -n 1)
-          
           if [ -z "$GENERATED_ISO" ]; then
             echo "[ERROR] ISO generation failed: No .iso file created."
             exit 1
           fi
-
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-
           mv "$GENERATED_ISO" "$FINAL_NAME"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
 
