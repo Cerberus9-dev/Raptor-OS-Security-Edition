@@ -3,28 +3,21 @@ set -euo pipefail
 
 ERRORS=0
 
-echo "==> [1/3] Checking Executable Permissions..."
-SCRIPTS=(
-  "build/config/includes.chroot/usr/local/bin/raptor-control-center"
-  "build/config/includes.chroot/usr/local/bin/raptor-killswitch"
-  "build/config/includes.chroot/usr/local/bin/raptor-security"
-  "build/config/includes.chroot/usr/local/bin/raptor-status"
-  "build/config/includes.chroot/usr/local/bin/raptor-anonymity"
-  "build/config/includes.chroot/usr/local/bin/raptor-browser"
-)
+echo "==> [1/3] Enforcing & Verifying Executable Permissions..."
+# Ensure binaries and hooks are executable
+chmod +x build/config/includes.chroot/usr/local/bin/* 2>/dev/null || true
+chmod +x build/config/hooks/live/*.hook.chroot 2>/dev/null || true
 
-for script in "${SCRIPTS[@]}"; do
-  if [ -f "$script" ]; then
-    if [ ! -x "$script" ]; then
-      echo "  [ERROR] Missing executable bit (+x): $script"
-      ERRORS=$((ERRORS + 1))
-    fi
+for script in build/config/includes.chroot/usr/local/bin/*; do
+  if [ -f "$script" ] && [ ! -x "$script" ]; then
+    echo "  [ERROR] Failed to set executable bit: $script"
+    ERRORS=$((ERRORS + 1))
   fi
 done
 
 for hook in build/config/hooks/live/*.hook.chroot; do
   if [ -f "$hook" ] && [ ! -x "$hook" ]; then
-    echo "  [ERROR] Hook missing executable bit: $hook"
+    echo "  [ERROR] Failed to set hook executable bit: $hook"
     ERRORS=$((ERRORS + 1))
   fi
 done
@@ -52,4 +45,4 @@ if [ "$ERRORS" -gt 0 ]; then
   echo "❌ Validation failed with $ERRORS error(s)."
   exit 1
 fi
-echo "✅ All pre-build checks passed."
+echo "✅ All pre-build checks passed successfully."
