@@ -47,7 +47,7 @@ jobs:
           cat << 'EOF' > build/config/archives/librewolf.list.binary
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
-          echo "ca-certificates" >> build/config/package-lists/security.list.chroot
+          echo "ca-certificates" >> build/config/package-lists/raptor-security.list.chroot
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
@@ -55,7 +55,8 @@ jobs:
       - name: Build ISO
         run: |
           cd build
-          sudo lb clean --purge
+          touch build.log
+          sudo lb clean --purge 2>&1 | sudo tee -a build.log
           sudo lb config \
             --distribution bookworm \
             --architectures amd64 \
@@ -65,8 +66,8 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --security true
-          sudo lb build 2>&1 | sudo tee build.log
+            --security true 2>&1 | sudo tee -a build.log
+          sudo lb build 2>&1 | sudo tee -a build.log
       - name: Prepare Artifact
         if: success()
         run: |
@@ -94,3 +95,4 @@ jobs:
         with:
           name: build-failure-log
           path: build/build.log
+          if-no-files-found: warn
