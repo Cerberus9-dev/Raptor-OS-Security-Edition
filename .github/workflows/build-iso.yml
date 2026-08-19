@@ -61,8 +61,6 @@ jobs:
 
           echo "ca-certificates" >> build/config/package-lists/raptor-security.list.chroot
 
-          # Belt-and-braces: still skip cert verification for anything that
-          # runs before the includes/bootstrap packages are fully settled.
           cat << 'EOF' > build/config/includes.chroot/etc/apt/apt.conf.d/99no-cert-check
           Acquire::https::Verify-Peer "false";
           Acquire::https::Verify-Host "false";
@@ -76,10 +74,6 @@ jobs:
           EOF
           chmod +x build/config/hooks/live/9999-restore-cert-check.hook.chroot
 
-          # live-build on this Ubuntu image doesn't know bookworm's security
-          # suite name and generates the old-style "bookworm/updates" path,
-          # which 404s. Disable its auto security repo (--security false in
-          # lb config below) and provide the correct suite manually instead.
           cat << 'EOF' > build/config/archives/debian-security.list.chroot
           deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
@@ -95,13 +89,10 @@ jobs:
 
       - name: Build ISO
         run: |
+          set -eo pipefail
           cd build
           touch build.log
 
-          # Ubuntu's debian-archive-keyring package lags behind Debian's
-          # current signing keys, causing "Release signed by unknown key"
-          # during debootstrap. Overwrite the default keyring file
-          # debootstrap actually reads with current keys from Debian.
           curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc -o /tmp/bookworm.asc
           curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc -o /tmp/bookworm-security.asc
           cat /tmp/bookworm.asc /tmp/bookworm-security.asc | gpg --dearmor | sudo tee /usr/share/keyrings/debian-archive-keyring.gpg > /dev/null
@@ -118,6 +109,12 @@ jobs:
             --bootstrap-includes "ca-certificates" \
             --security false 2>&1 | sudo tee -a build.log
           sudo lb build 2>&1 | sudo tee -a build.log
+
+      - name: Show build log
+        if: always()
+        run: |
+          echo "===== build/build.log ====="
+          cat build/build.log 2>/dev/null || echo "(no build.log found)"
 
       - name: Prepare Artifact
         if: success()
