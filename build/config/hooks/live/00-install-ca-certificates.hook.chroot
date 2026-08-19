@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The base debootstrap chroot has no CA trust store, so any HTTPS apt source
+# (e.g. deb.librewolf.net) fails TLS verification the first time apt-get
+# update runs against it. deb.debian.org/debian-security are plain HTTP and
+# don't need this, so install ca-certificates from those first, then
+# refresh the index so HTTPS sources succeed on retry.
+apt-get update
+apt-get install -y --no-install-recommends ca-certificates apt-transport-https
+apt-get update
