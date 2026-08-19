@@ -2,19 +2,26 @@
 set -euo pipefail
 
 CONF_DIR="/etc/raptor"
-MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURE")
+MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURITY")
 KILLSWITCH=$([ -f "${CONF_DIR}/killswitch_active" ] && echo "ACTIVE" || echo "INACTIVE")
 
-if nft list ruleset 2>/dev/null | grep -q "table inet filter"; then
+if nft list ruleset 2>/dev/null | grep -qE "table inet filter|table inet killswitch"; then
     FIREWALL="ENABLED"
 else
     FIREWALL="DISABLED"
+fi
+
+if systemctl is-active --quiet raptor-ramwipe-now.service 2>/dev/null; then
+    RAMWIPE="ACTIVE"
+else
+    RAMWIPE="INACTIVE"
 fi
 
 cat <<EOF
 {
   "mode": "${MODE^^}",
   "killswitch": "${KILLSWITCH}",
-  "firewall": "${FIREWALL}"
+  "firewall": "${FIREWALL}",
+  "ramwipe": "${RAMWIPE}"
 }
 EOF
