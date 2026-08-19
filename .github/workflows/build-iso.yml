@@ -1,203 +1,77 @@
-name: Build Raptor OS Security Edition ISO
+name: Raptor OS ISO Build Pipeline
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-
-permissions:
-  contents: read
-
-concurrency:
-  group: raptor-security-build-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build Raptor OS Security ISO
-    runs-on: ubuntu-24.04
+  validate-and-build:
+    name: Validate and Build Raptor OS ISO
+    runs-on: ubuntu-latest
+    container:
+      image: debian:bookworm
+      options: --privileged
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Disable AppArmor User Namespace Restrictions
+      - name: Install System Build Dependencies
         run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-
-      - name: Cache live-build stages
-        uses: actions/cache@v4
-        with:
-          path: build/cache
-          key: raptor-security-lb-v2-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/auto/config') }}
-          restore-keys: |
-            raptor-security-lb-v2-${{ runner.os }}-
-
-      - name: Free Runner Disk Space
-        run: |
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/local/lib/android \
-            /opt/ghc \
-            /usr/local/share/boost \
-            "$AGENT_TOOLSDIRECTORY" || true
-          df -h
-
-      - name: Install Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y --no-install-recommends \
             live-build \
-            debootstrap \
-            debian-archive-keyring \
-            squashfs-tools \
+            gdisk \
             xorriso \
-            isolinux \
-            syslinux-utils \
-            grub-efi-amd64-bin \
-            mtools \
-            dosfstools \
-            rsync \
-            python3-gi \
-            gir1.2-gtk-3.0
+            file \
+            python3 \
+            bash \
+            ca-certificates \
+            wget \
+            git
 
-      - name: Apply Live-Build Engine Patches
+      - name: Run Pre-Build Validation
         run: |
-          set -e
-          # Fix Debian Mirror Contents Index Lookup
-          LB_FILE="/usr/lib/live/build/lb_chroot_linux-image"
-          sudo sed -i 's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' "$LB_FILE"
-          sudo sed -i 's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' "$LB_FILE"
+          chmod +x build/scripts/validate.sh
+          ./build/scripts/validate.sh
 
-          # Fix Debian Security Naming Convention
-          sudo sed -i '/SECURITY/ s#/updates#-security#g' /usr/lib/live/build/lb_chroot_archives
-
-          # Fix ISOLINUX Bootloader Module Paths
-          THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
-          sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
-          sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
-
-          # Replace deprecated rsvg calls with rsvg-convert
-          LB_SYS="/usr/lib/live/build/lb_binary_syslinux"
-          sudo sed -i 's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' "$LB_SYS"
-
-      - name: Set Permissions & Enforce Anti-sysvinit Pinning
-        working-directory: build
+      - name: Clean & Configure live-build
         run: |
-          set -e
-          # Ensure scripts inside includes.chroot are executable
-          chmod +x config/includes.chroot/usr/local/bin/raptor-* || true
+          cd build
+          lb clean --purge
+          lb config \
+            --architectures amd64 \
+            --distribution bookworm \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --debian-installer live \
+            --bootloader syslinux \
+            --iso-application "Raptor OS Security Edition" \
+            --iso-volume "RAPTOR_OS_DEV"
 
-          # Create APT Pinning to prevent sysvinit from replacing systemd
-          mkdir -p config/archives config/apt
-          cat <<'EOF' > config/archives/anti-sysvinit.pref.chroot
-          Package: sysvinit-core sysv-rc initscripts orphan-sysvinit-scripts live-config-sysvinit
-          Pin: release *
-          Pin-Priority: -1
-          EOF
-
-          # Disable APT unprivileged sandboxing inside chroot
-          echo 'APT::Sandbox::User "root";' > config/apt/apt.conf
-
-      - name: Configure Live-Build
-        working-directory: build
+      - name: Execute ISO Build
         run: |
-          set -e
-          chmod +x auto/config
-          ./auto/config
+          cd build
+          lb build 2>&1 | tee build.log
 
-      - name: Build ISO Image
-        working-directory: build
-        run: sudo lb build
-
-      - name: Add Hybrid UEFI & BIOS Boot
-        working-directory: build
+      - name: Generate SHA-256 Checksum
         run: |
-          set -e
-          ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          if [ -z "$ORIGINAL_ISO" ]; then
-            echo "ERROR: No ISO produced by lb build."
+          cd build
+          if [ -f live-image-amd64.hybrid.iso ]; then
+            mv live-image-amd64.hybrid.iso raptor-os-security-amd64.iso
+            sha256sum raptor-os-security-amd64.iso > raptor-os-security-amd64.iso.sha256
+          else
+            echo "::error::ISO file generation failed! Check build.log for live-build errors."
             exit 1
           fi
 
-          sudo chmod -R a+rwX binary "$ORIGINAL_ISO"
-          mkdir -p efi-build/esp/EFI/BOOT
-
-          cat <<'EOF' > efi-build/grub.cfg
-          insmod part_gpt
-          insmod part_msdos
-          insmod fat
-          insmod iso9660
-          insmod all_video
-          insmod gfxterm
-
-          set default="0"
-          set timeout=5
-
-          search --no-floppy --set=root --label RAPTOR-SECURITY
-
-          menuentry "Raptor OS Security Edition (Live)" {
-              linux /live/vmlinuz boot=live components quiet splash
-              initrd /live/initrd.img
-          }
-
-          menuentry "Raptor OS Security Edition (Failsafe)" {
-              linux /live/vmlinuz boot=live components noapic noapm nodma nomce nolapic nosmp
-              initrd /live/initrd.img
-          }
-          EOF
-
-          grub-mkstandalone \
-            --format=x86_64-efi \
-            --output=efi-build/BOOTX64.EFI \
-            --locales="" \
-            --fonts="" \
-            "boot/grub/grub.cfg=efi-build/grub.cfg"
-
-          dd if=/dev/zero of=efi-build/efiboot.img bs=1M count=16
-          mkfs.vfat -F 16 -n "RAPTOR_EFI" efi-build/efiboot.img
-          mmd -i efi-build/efiboot.img ::/EFI
-          mmd -i efi-build/efiboot.img ::/EFI/BOOT
-          mcopy -i efi-build/efiboot.img efi-build/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
-
-          mkdir -p binary/EFI/BOOT
-          cp efi-build/BOOTX64.EFI binary/EFI/BOOT/BOOTX64.EFI
-
-          cd binary
-          xorriso -as mkisofs \
-            -r -J -l -cache-inodes -allow-multidot \
-            -A "Raptor OS Security Edition" \
-            -publisher "Cerberus9-dev" \
-            -V "RAPTOR-SECURITY" \
-            -no-emul-boot -boot-load-size 4 -boot-info-table \
-            -b isolinux/isolinux.bin -c isolinux/boot.cat \
-            -eltorito-alt-boot \
-            -e --interval:appended_partition_2:all:: \
-            -no-emul-boot \
-            -append_partition 2 0xef ../efi-build/efiboot.img \
-            -isohybrid-gpt-basdat \
-            -o "../${ORIGINAL_ISO}.uefi" \
-            .
-          cd ..
-
-          if [ -f "${ORIGINAL_ISO}.uefi" ]; then
-            mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
-          fi
-
-      - name: Generate SHA256 Checksum
-        working-directory: build
-        run: |
-          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          sha256sum "$ISO" > raptor-os-security.sha256
-          cat raptor-os-security.sha256
-
-      - name: Upload ISO Artifact
+      - name: Upload ISO Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Raptor-OS-Security-ISO
+          name: raptor-os-security-iso
           path: |
-            build/*.iso
-            build/raptor-os-security.sha256
-          retention-days: 14
+            build/raptor-os-security-amd64.iso
+            build/raptor-os-security-amd64.iso.sha256
+          retention-days: 7
