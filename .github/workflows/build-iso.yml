@@ -39,47 +39,16 @@ jobs:
             dosfstools \
             python3 \
             coreutils \
-            file \
-            debian-archive-keyring \
-            ca-certificates \
-            gnupg \
-            curl
+            file
 
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
-          mkdir -p build/config/package-lists
-          mkdir -p build/config/includes.chroot/etc/apt/apt.conf.d
-
           cat << 'EOF' > build/config/archives/librewolf.list.chroot
-          deb [trusted=yes] https://deb.librewolf.net bookworm main
+          deb [trusted=yes] https://repo.librewolf.net librewolf main
           EOF
-
           cat << 'EOF' > build/config/archives/librewolf.list.binary
-          deb [trusted=yes] https://deb.librewolf.net bookworm main
-          EOF
-
-          echo "ca-certificates" >> build/config/package-lists/raptor-security.list.chroot
-
-          cat << 'EOF' > build/config/includes.chroot/etc/apt/apt.conf.d/99no-cert-check
-          Acquire::https::Verify-Peer "false";
-          Acquire::https::Verify-Host "false";
-          EOF
-
-          mkdir -p build/config/hooks/live
-          cat << 'EOF' > build/config/hooks/live/9999-restore-cert-check.hook.chroot
-          #!/bin/sh
-          set -e
-          rm -f /etc/apt/apt.conf.d/99no-cert-check
-          EOF
-          chmod +x build/config/hooks/live/9999-restore-cert-check.hook.chroot
-
-          cat << 'EOF' > build/config/archives/debian-security.list.chroot
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-          EOF
-
-          cat << 'EOF' > build/config/archives/debian-security.list.binary
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          deb [trusted=yes] https://repo.librewolf.net librewolf main
           EOF
 
       - name: Run Validation Check
@@ -89,32 +58,19 @@ jobs:
 
       - name: Build ISO
         run: |
-          set -eo pipefail
           cd build
-          touch build.log
-
-          curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc -o /tmp/bookworm.asc
-          curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc -o /tmp/bookworm-security.asc
-          cat /tmp/bookworm.asc /tmp/bookworm-security.asc | gpg --dearmor | sudo tee /usr/share/keyrings/debian-archive-keyring.gpg > /dev/null
-
-          sudo lb clean --purge 2>&1 | sudo tee -a build.log
+          sudo lb clean --purge
           sudo lb config \
-            --mode debian \
             --distribution bookworm \
             --architectures amd64 \
             --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
-            --apt-options "--yes -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false" \
-            --security false 2>&1 | sudo tee -a build.log
-          sudo lb build 2>&1 | sudo tee -a build.log
-
-      - name: Show build log
-        if: always()
-        run: |
-          echo "===== build/build.log ====="
-          cat build/build.log 2>/dev/null || echo "(no build.log found)"
+            --mirror-chroot-security "http://deb.debian.org/debian-security/" \
+            --mirror-binary-security "http://deb.debian.org/debian-security/" \
+            --security true
+          sudo lb build 2>&1 | sudo tee build.log
 
       - name: Prepare Artifact
         if: success()
@@ -127,8 +83,8 @@ jobs:
           fi
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          sudo mv "$GENERATED_ISO" "$FINAL_NAME"
-          sudo sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
+          mv "$GENERATED_ISO" "$FINAL_NAME"
+          sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
 
       - name: Upload ISO
         if: success()
@@ -145,4 +101,3 @@ jobs:
         with:
           name: build-failure-log
           path: build/build.log
-          if-no-files-found: warn
