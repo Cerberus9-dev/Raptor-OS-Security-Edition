@@ -80,6 +80,14 @@ jobs:
           cd build
           lb build 2>&1 | tee build.log
 
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raptor-os-build-log
+          path: build/build.log
+          retention-days: 7
+
       - name: Generate SHA-256 Checksum
         run: |
           cd build
@@ -87,7 +95,7 @@ jobs:
             mv live-image-amd64.hybrid.iso raptor-os-security-amd64.iso
             sha256sum raptor-os-security-amd64.iso > raptor-os-security-amd64.iso.sha256
           else
-            echo "::error::ISO file generation failed! Check build.log for live-build errors."
+            echo "::error::ISO file generation failed! Check build.log artifact for live-build errors."
             exit 1
           fi
 
