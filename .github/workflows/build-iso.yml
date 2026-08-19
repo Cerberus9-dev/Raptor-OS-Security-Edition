@@ -8,26 +8,29 @@ on:
 jobs:
   build-security-iso:
     name: Build Raptor Security ISO
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Environment Variables
-        run: |
-          BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
-          echo "ISO_FILENAME=raptor-security-${BUILD_DATE}-amd64.iso" >> $GITHUB_ENV
-
       - name: Install Build Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update -q
+          sudo sed -i 's|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+
+          sudo apt-get update \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::http::Timeout=5 \
+            -o Acquire::Retries=3
+
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             -o Dpkg::Options::="--force-confdef" \
             -o Dpkg::Options::="--force-confold" \
+            -o Acquire::ForceIPv4=true \
             live-build \
             debootstrap \
             squashfs-tools \
@@ -80,8 +83,11 @@ jobs:
             exit 1
           fi
 
-          mv "$GENERATED_ISO" "${{ env.ISO_FILENAME }}"
-          sha256sum "${{ env.ISO_FILENAME }}" > "${{ env.ISO_FILENAME }}.sha256"
+          BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
+          FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
+
+          mv "$GENERATED_ISO" "$FINAL_NAME"
+          sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
 
       - name: Upload ISO
         if: success()
@@ -89,8 +95,8 @@ jobs:
         with:
           name: raptor-security-iso
           path: |
-            build/${{ env.ISO_FILENAME }}
-            build/${{ env.ISO_FILENAME }}.sha256
+            build/*.iso
+            build/*.sha256
 
       - name: Upload Log on Failure
         if: failure()
