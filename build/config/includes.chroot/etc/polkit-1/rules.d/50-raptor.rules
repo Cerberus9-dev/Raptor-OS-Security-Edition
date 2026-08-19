@@ -1,8 +1,11 @@
 polkit.addRule(function(action, subject) {
-    if (action.id == "org.freedesktop.policykit.exec" &&
-        (action.lookup("program") == "/usr/local/bin/raptor-security" ||
-         action.lookup("program") == "/usr/local/bin/raptor-firewall" ||
-         action.lookup("program") == "/usr/local/bin/raptor-killswitch")) {
-        return polkit.Result.YES;
+    if (action.id == "org.freedesktop.policykit.exec") {
+        var prog = action.lookup("program");
+        if (prog == "/usr/local/bin/raptor-security" ||
+            prog == "/usr/local/bin/raptor-firewall" ||
+            prog == "/usr/local/bin/raptor-killswitch" ||
+            prog == "/usr/local/bin/raptor-status") {
+            return polkit.Result.YES;
+        }
     }
 });
