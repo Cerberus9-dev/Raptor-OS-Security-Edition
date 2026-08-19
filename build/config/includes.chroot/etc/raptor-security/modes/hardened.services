@@ -1,7 +1,0 @@
-# Hardened mode service posture — spec section 8: "reduced unnecessary
-# services." Stop discovery/broadcast services that widen local network
-# exposure; nothing here removes a security/pentest TOOL, only background
-# daemons the OS itself runs.
-+nftables
--avahi-daemon
--cups-browsed

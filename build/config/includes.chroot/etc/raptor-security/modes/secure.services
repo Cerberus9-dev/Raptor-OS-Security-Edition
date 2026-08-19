@@ -1,4 +1,0 @@
-# Secure mode service posture. '+' = ensure started, '-' = ensure stopped.
-# Kept minimal — Secure mode shouldn't be fighting the user's own choices
-# about what's running.
-+nftables

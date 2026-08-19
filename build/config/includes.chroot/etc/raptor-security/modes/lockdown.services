@@ -1,7 +1,0 @@
-# Lockdown mode service posture — spec section 9: stop unnecessary
-# services, disable unnecessary interfaces where practical.
-+nftables
--avahi-daemon
--cups-browsed
--cups
--bluetooth
