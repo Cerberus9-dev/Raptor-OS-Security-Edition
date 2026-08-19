@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Raptor Security Control Center
-Comment=Manage Security Modes, Firewall, and Emergency Killswitch
-Exec=raptor-control-center
-Icon=security-high
-Terminal=false
-Type=Application
-Categories=System;Security;
