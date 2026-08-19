@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Raptor Control Center
+Comment=Security Management & Profile Dashboard
+Exec=python3 /usr/local/bin/raptor-control-center
+Icon=security-high
+Terminal=false
+Categories=System;Security;
+X-GNOME-Autostart-enabled=true
