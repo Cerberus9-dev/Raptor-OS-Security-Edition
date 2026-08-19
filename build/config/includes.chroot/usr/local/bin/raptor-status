@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE=$(cat /etc/raptor/current_mode 2>/dev/null || echo "secure")
+KILLSWITCH=$([ -f /etc/raptor/killswitch_active ] && echo "ACTIVE" || echo "INACTIVE")
+FIREWALL=$(nft list ruleset 2>/dev/null | grep -q "table inet filter" && echo "ENABLED" || echo "DISABLED")
+
+cat <<EOF
+{
+  "mode": "${MODE^^}",
+  "killswitch": "${KILLSWITCH}",
+  "firewall": "${FIREWALL}"
+}
+EOF
