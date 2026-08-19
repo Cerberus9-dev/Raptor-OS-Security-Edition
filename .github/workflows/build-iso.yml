@@ -60,6 +60,12 @@ jobs:
           cat << 'EOF' > build/config/archives/librewolf.list.binary
           deb [trusted=yes] https://repo.librewolf.net librewolf main
           EOF
+          cat << 'EOF' > build/config/archives/backports.list.chroot
+          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+          EOF
+          cat << 'EOF' > build/config/archives/backports.list.binary
+          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+          EOF
 
       - name: Run Validation Check
         run: |
