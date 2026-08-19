@@ -1,6 +1,25 @@
-macchanger
+# Tor & Anonymity
+tor
+torbrowser-launcher
+nyx
+
+# VPN Support
+openvpn
+wireguard
+wireguard-tools
+network-manager-openvpn
+network-manager-openvpn-gnome
+network-manager-wireguard
+
+# DNS Security & Privacy
 dnscrypt-proxy
-policykit-1
-python3-tk
+resolvconf
+
+# Identity & Security Hardening
+macchanger
+secure-delete
+iptables
 nftables
-network-manager
+policykit-1
+python3-gi
+gir1.2-gtk-3.0
