@@ -63,7 +63,7 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --debootstrap-options "--include=ca-certificates" \
+            --debootstrap-options="--include=ca-certificates" \
             --security true
           sudo lb build 2>&1 | sudo tee build.log
       - name: Prepare Artifact
