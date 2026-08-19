@@ -19,20 +19,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Restores build/cache/ from a previous run (each GitHub-hosted
-      # runner is a fresh VM — nothing on disk survives between runs on
-      # its own, this is what actually gives runs continuity). Keyed on
-      # everything that affects what ends up IN the cached chroot —
-      # package lists and the install hooks — so a change to any of
-      # those correctly produces a fresh cache instead of reusing a
-      # stale one. restore-keys falls back to the most recent cache
-      # under any key prefix match if there's no exact hit; live-build's
-      # own internal config comparison (it stores a checksum of the
-      # config that produced each cached stage) is what actually decides
-      # whether a restored-but-imperfect-match cache is still usable, so
-      # a fallback restore is a reasonable bet, not a correctness risk —
-      # worst case, live-build itself decides the cache doesn't apply and
-      # rebuilds that stage anyway.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
@@ -72,16 +58,6 @@ jobs:
           lb --version
           debootstrap --version
 
-      # This live-build package (3.0~a57-1ubuntu49.1 on ubuntu-24.04
-      # runners at time of writing) ships lb_chroot_linux-image with a
-      # 2012-era Contents index path that predates Debian moving that
-      # file under dists/<suite>/main/ instead of dists/<suite>/ directly.
-      # Verified directly against the installed package before adding
-      # this patch — grep the file yourself if the live-build version
-      # ever changes, since a newer package may have already fixed this
-      # upstream and this step would then be a silent no-op (the sed
-      # won't match, won't error, and won't do anything — safe either
-      # way, but worth knowing which case you're in).
       - name: Patch live-build Contents index lookup
         run: |
           set -e
@@ -97,17 +73,6 @@ jobs:
           echo "===== after patch ====="
           grep -n "Contents-" "$LB_FILE" || true
 
-      # Debian renamed the security suite from "<dist>/updates" to
-      # "<dist>-security" in 2023. This live-build version still hardcodes
-      # the old "/updates" form specifically for the *_SECURITY mirror
-      # variables (confirmed by reading /usr/lib/live/build/lb_chroot_archives
-      # directly — the VOLATILE mirror lines already correctly use the
-      # hyphenated form, only SECURITY does not). Without this patch, the
-      # chroot stage writes a security sources.list line pointing at
-      # "bookworm/updates", which 404s against the real archive and fails
-      # the build with "does not have a Release file". Confirmed by an
-      # actual failed CI run before this patch existed — this one is not
-      # speculative.
       - name: Patch live-build security suite name
         run: |
           set -e
@@ -120,22 +85,6 @@ jobs:
           echo "===== confirm VOLATILE lines untouched ====="
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
-      # Same live-build-version-vs-modern-Debian-packaging mismatch as
-      # the two patches above. live-build's bundled isolinux theme
-      # symlinks point to /usr/lib/syslinux/isolinux.bin and
-      # /usr/lib/syslinux/vesamenu.c32 — paths that no longer exist in
-      # current isolinux/syslinux-common packaging (confirmed directly:
-      # real files are at /usr/lib/ISOLINUX/isolinux.bin and
-      # /usr/lib/syslinux/modules/bios/vesamenu.c32; no compatibility
-      # symlinks exist at the old locations at all). Without this,
-      # lb_binary_syslinux fails late in the build (after bootstrap +
-      # full package install + manifest creation all already succeeded)
-      # with "cannot stat '/root/isolinux/isolinux.bin'" — reproduced
-      # against a real failed CI run before this fix existed. The other
-      # half of this fix is isolinux/syslinux-common now being installed
-      # INSIDE the chroot too (raptor-base.list.chroot) — these symlinks
-      # get copied into the chroot and dereferenced there, so the real
-      # files need to exist in the built system, not just on the runner.
       - name: Patch live-build isolinux theme paths
         run: |
           set -e
@@ -147,18 +96,6 @@ jobs:
           echo "===== after patch ====="
           ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
 
-      # Same bug family again. librsvg2-bin dropped the old `rsvg`
-      # command-line binary entirely — only `rsvg-convert` exists in any
-      # current version, with different argument syntax (output file is
-      # `-o file.png`, not a second positional argument like the old
-      # tool). Confirmed directly: installed librsvg2-bin here, `which
-      # rsvg` finds nothing, `which rsvg-convert` does, and tested the
-      # exact transformed command against a real SVG before adding this
-      # patch. Reproduced against a real failed CI run (`/usr/bin/env:
-      # 'rsvg': No such file or directory`) — this is the 4th distinct
-      # instance of "old live-build assumption vs. current Debian/Ubuntu
-      # packaging" in this repo; if something else breaks later, suspect
-      # this same category before assuming it's new.
       - name: Patch live-build rsvg invocation
         run: |
           set -e
@@ -174,23 +111,6 @@ jobs:
           echo "===== after patch ====="
           grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
 
-      # Different bug from the previous four — not a renamed/moved
-      # package, an actual live-build logic gap. This "hack around
-      # gfxboot" block (lines ~362-375) unconditionally repacks
-      # ${_TARGET}/bootlogo, but that file is ONLY ever created for
-      # LB_MODE=ubuntu builds (extracted from the gfxboot-theme-ubuntu
-      # package — confirmed by reading every reference to bootlogo in
-      # this script). Our build is LB_MODE=debian (confirmed via a real
-      # `lb config` dry-run against this repo's own auto/config), so
-      # that file never exists and this block fails outright. gfxboot
-      # itself isn't used at all in a plain Debian build with the
-      # default "live-build" syslinux theme — boot splash goes through
-      # the separate splash.svg/splash.png path already patched above,
-      # not this gfxboot-specific archive. Fix: skip this whole block
-      # when there's nothing for it to do, which is every Debian-mode
-      # build. Tested by actually running the patched logic (not just
-      # syntax-checking it) against a directory with no bootlogo file,
-      # matching our real condition exactly — completes cleanly.
       - name: Patch live-build gfxboot bootlogo hack (Debian-mode no-op)
         run: |
           set -e
@@ -205,13 +125,6 @@ jobs:
           echo "===== after patch ====="
           sed -n '362,378p' "$LB_FILE"
 
-      # NOTE: deliberately NOT `lb clean --purge` — that internally calls
-      # `lb clean --cache`, which deletes build/cache/ entirely. That was
-      # silently throwing away live-build's own package/bootstrap/chroot
-      # caching on every single run, on top of the actions/cache restore
-      # above being wasted too. Only remove the ephemeral output
-      # directories; build/cache/ (restored above, or empty on a true
-      # first run) is left alone on purpose.
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
@@ -220,6 +133,18 @@ jobs:
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
 
+      - name: Force systemd & sanitize sysvinit
+        working-directory: build
+        run: |
+          set -e
+          find config/ auto/ -type f -exec sed -i 's/live-config-sysvinit/live-config-systemd/g' {} +
+          grep -q "\-\-systemd true" auto/config || sed -i '/lb config noauto/a \  --systemd true \\' auto/config
+          LIST_FILE="config/package-lists/raptor-base.list.chroot"
+          if [ -f "$LIST_FILE" ]; then
+            grep -q "^systemd-sysv$" "$LIST_FILE" || echo "systemd-sysv" >> "$LIST_FILE"
+            grep -q "^live-config-systemd$" "$LIST_FILE" || echo "live-config-systemd" >> "$LIST_FILE"
+          fi
+
       - name: Configure live-build
         working-directory: build
         run: |
@@ -227,23 +152,6 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
-      # Defensive fix for a real failure seen mid-build: apt-key inside
-      # the chroot failing with "Couldn't create temporary file
-      # /tmp/apt.conf.XXXXXX" during the binary stage's chroot copy —
-      # after bootstrap, full package install, and the chroot cache
-      # save had ALL already succeeded, so this isn't a package or path
-      # problem like every other fix in this workflow.
-      #
-      # Being honest about confidence here, unlike every other patch in
-      # this file: I could not reproduce or fully verify this one. The
-      # closest documented match (a near-identical vmdb2/libpam-tmpdir
-      # bug report) is a host TMPDIR pointing at a path that doesn't
-      # exist inside a chroot, preserved through by the tool that
-      # invokes the chroot — but I also found evidence GitHub's
-      # ubuntu-latest runners don't set TMPDIR by default, which
-      # weakens that specific explanation for this specific case. This
-      # applies two independent, low-risk defensive fixes rather than
-      # betting on one unverified guess:
       - name: Ensure a clean, valid TMPDIR before building
         run: |
           unset TMPDIR
@@ -265,29 +173,6 @@ jobs:
           echo "ISO successfully built (BIOS-only at this point):"
           ls -lh "$ISO"
 
-      # This live-build version (Ubuntu-packaged, 2012-era — see this
-      # repo's other patches for the full pattern) has NO UEFI support
-      # at all: confirmed by grepping every script in
-      # /usr/lib/live/build/ for "EFI" and "grub-efi" and finding zero
-      # matches anywhere. --bootloaders grub-efi in auto/config has
-      # been silently doing nothing this whole time; the ISO
-      # live-build itself produces is BIOS/isolinux-only.
-      #
-      # Rather than replacing live-build entirely (untested, would
-      # likely invalidate every patch already verified in this
-      # workflow), this rebuilds the ISO ourselves from live-build's
-      # own already-assembled build/binary/ tree, adding a second
-      # (UEFI) El Torito boot entry alongside the first (BIOS) one —
-      # the standard technique for a genuinely hybrid BIOS+UEFI ISO.
-      # Every command below was tested directly against a real,
-      # structurally equivalent synthetic ISO before being added here:
-      # grub-mkstandalone was confirmed to produce a valid PE32+ EFI
-      # executable (`file` command), the FAT image was verified to
-      # contain /EFI/BOOT/BOOTX64.EFI at the correct path, and the
-      # final xorriso invocation was confirmed via
-      # `-report_el_torito plain` to produce TWO real boot entries
-      # (BIOS + UEFI, both marked bootable) — not just assumed to work
-      # from exit code 0 alone.
       - name: Add UEFI boot support (BIOS boot untouched)
         working-directory: build
         run: |
@@ -296,38 +181,8 @@ jobs:
           ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
           echo "Original BIOS-only ISO: $ORIGINAL_ISO"
 
-          # Same root cause as the earlier cache-save permission fix:
-          # `sudo lb build` leaves build/binary/ and the .iso itself
-          # root-owned, but this step's commands run as the normal
-          # unprivileged runner user. Hand both back before touching
-          # them — chmod rather than chown, so this doesn't depend on
-          # knowing the exact runner username.
           sudo chmod -R a+rwX binary "$ORIGINAL_ISO"
 
-          # --- Build the standalone EFI boot stub ---
-          # (using printf, not a heredoc — a heredoc's closing delimiter
-          # must sit at column 0 with no indentation, which is easy to
-          # break inside an indented YAML block; printf has no such trap)
-          #
-          # Both fixes below (search+regexp) were found and verified by
-          # actually booting this exact config under QEMU+OVMF (real
-          # UEFI firmware) against a synthetic ISO with the same
-          # structure as the real build — not just reasoned about:
-          #
-          # 1. grub-mkstandalone's embedded config boots from a
-          #    "memdisk" (baked into the EFI binary itself), NOT the
-          #    ESP or the main ISO9660 filesystem. Without an explicit
-          #    `search --set=root --label RAPTOR-SECURITY`, $root stays
-          #    on the memdisk, which has no /live/ directory at all —
-          #    reproduced this exact failure ("file /live/vmlinuz-*
-          #    not found") under QEMU before adding this line.
-          # 2. Separately, GRUB's `linux`/`initrd` commands do NOT
-          #    glob-expand wildcards (like /live/vmlinuz-*) unless the
-          #    `regexp` module is loaded — confirmed by testing the
-          #    exact same wildcard with and without `insmod regexp`
-          #    under QEMU: without it, "file not found" even with a
-          #    correct root and an explicit device prefix; with it,
-          #    the wildcard correctly resolves to the real file.
           mkdir -p efi-build
           {
             printf '%s\n' 'insmod part_gpt'
@@ -369,7 +224,6 @@ jobs:
             exit 1
           }
 
-          # --- Package it into a FAT16 EFI System Partition image ---
           mkdir -p efi-build/esp/EFI/BOOT
           cp efi-build/BOOTX64.EFI efi-build/esp/EFI/BOOT/BOOTX64.EFI
           dd if=/dev/zero of=efi-build/efiboot.img bs=1M count=16
@@ -378,15 +232,9 @@ jobs:
           mmd -i efi-build/efiboot.img ::/EFI/BOOT
           mcopy -i efi-build/efiboot.img efi-build/BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI
 
-          # Also place the EFI files directly in the ISO filesystem
-          # (not just the GPT partition) — some USB-flashing tools
-          # read the plain ISO9660 tree rather than the GPT partition,
-          # and xorriso warns explicitly about this if skipped.
           mkdir -p binary/EFI/BOOT
           cp efi-build/BOOTX64.EFI binary/EFI/BOOT/BOOTX64.EFI
 
-          # --- Rebuild the ISO: live-build's original BIOS boot entry
-          #     plus the new UEFI entry, in one xorriso session ---
           cd binary
           xorriso -as mkisofs \
             -r -J -l -cache-inodes -allow-multidot \
@@ -404,8 +252,6 @@ jobs:
             .
           cd ..
 
-          # --- Verify both boot entries actually made it in, don't
-          #     just trust a zero exit code ---
           ENTRY_COUNT=$(xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep -c "El Torito boot img" || true)
           if [ "$ENTRY_COUNT" -lt 2 ]; then
             echo "ERROR: rebuilt ISO does not have both BIOS and UEFI boot entries."
@@ -437,20 +283,6 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      # The "Cache live-build stages" step earlier in this job saves
-      # build/cache/ automatically once the job finishes, via a "post"
-      # hook that runs as the normal unprivileged runner user — not
-      # root. Every build step above runs `sudo lb build`/`sudo rm`,
-      # so everything under build/cache/ (downloaded .debs, the cached
-      # bootstrap/chroot stages) is root-owned with permissions that
-      # unprivileged tar can't read, producing exactly the
-      # `/usr/bin/tar failed with exit code 2` warning on cache save.
-      # This doesn't fail the job (upload-artifact above already
-      # succeeded), but it silently means the cache never actually
-      # saves, defeating the entire point of the caching fix — every
-      # run goes back to a cold cache. Fixing by making build/cache/
-      # world-readable right before the job ends, so the automatic
-      # post-hook can actually read what it's trying to archive.
       - name: Fix cache permissions for save
         if: always()
         run: sudo chmod -R a+rX build/cache 2>/dev/null || true
