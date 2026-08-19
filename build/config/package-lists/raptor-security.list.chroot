@@ -1,0 +1,82 @@
+# Base System, Desktop Environment & Display Manager
+task-desktop
+xfce4
+xfce4-goodies
+lightdm
+network-manager-gnome
+calamares
+calamares-settings-debian
+sudo
+curl
+wget
+git
+zsh
+rfkill
+
+# Hardware, Firmware & Audio Drivers
+firmware-linux
+firmware-linux-nonfree
+firmware-iwlwifi
+firmware-realtek
+bluetooth
+bluez
+pulseaudio
+pavucontrol
+
+# Primary Web Browser & Media
+librewolf
+vlc
+gimp
+flameshot
+
+# Tor & Anonymity Engine
+tor
+torbrowser-launcher
+nyx
+netcat-openbsd
+
+# VPN & Network Routing
+openvpn
+wireguard
+wireguard-tools
+network-manager
+network-manager-openvpn
+network-manager-openvpn-gnome
+network-manager-wireguard
+
+# System Hardening, Privacy & Anti-Forensics
+macchanger
+secure-delete
+dnscrypt-proxy
+resolvconf
+nftables
+iptables
+
+# GTK Dashboard & Control Center Dependencies
+policykit-1
+python3
+python3-pip
+python3-gi
+python3-tk
+gir1.2-gtk-3.0
+
+# Software Development & Mobile Integration
+scrcpy
+kdeconnect
+android-tools-adb
+build-essential
+evince
+gnome-calculator
+
+# Security Auditing, Forensics & Reconnaissance
+nmap
+wireshark
+tcpdump
+aircrack-ng
+hydra
+john
+hashcat
+sqlmap
+chkrootkit
+rkhunter
+autopsy
