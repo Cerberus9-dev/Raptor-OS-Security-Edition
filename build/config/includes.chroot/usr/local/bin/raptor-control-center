@@ -11,7 +11,7 @@ class RaptorControlCenter(Gtk.Window):
     def __init__(self):
         super().__init__(title="Raptor OS - Tactical Control Center")
         self.set_border_width(16)
-        self.set_default_size(580, 520)
+        self.set_default_size(580, 560)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -19,8 +19,21 @@ class RaptorControlCenter(Gtk.Window):
 
         # Header
         title_label = Gtk.Label()
-        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security & Anonymity</span>")
+        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security &amp; Anonymity</span>")
         main_box.pack_start(title_label, False, False, 0)
+
+        # Emergency Dynamic Warning Banner (RAM Wipe Alert)
+        self.wipe_banner = Gtk.InfoBar()
+        self.wipe_banner.set_message_type(Gtk.MessageType.WARNING)
+        self.wipe_banner_label = Gtk.Label()
+        self.wipe_banner_label.set_markup("<b>⚠️ EMERGENCY RAM WIPE IN PROGRESS</b>\nBackground sanitization active (sdmem). System performance may temporarily dip.")
+        self.wipe_banner_label.set_justify(Gtk.Justification.CENTER)
+        
+        banner_content = self.wipe_banner.get_content_area()
+        banner_content.add(self.wipe_banner_label)
+        self.wipe_banner.set_no_show_all(True)
+        self.wipe_banner.hide()
+        main_box.pack_start(self.wipe_banner, False, False, 0)
 
         # Live Status Dashboard
         status_frame = Gtk.Frame(label=" Live Security & Privacy Status ")
@@ -32,8 +45,9 @@ class RaptorControlCenter(Gtk.Window):
         self.lbl_vpn = Gtk.Label()
         self.lbl_dns = Gtk.Label()
         self.lbl_ks = Gtk.Label()
+        self.lbl_wipe = Gtk.Label()
 
-        for lbl in [self.lbl_mode, self.lbl_tor, self.lbl_vpn, self.lbl_dns, self.lbl_ks]:
+        for lbl in [self.lbl_mode, self.lbl_tor, self.lbl_vpn, self.lbl_dns, self.lbl_ks, self.lbl_wipe]:
             status_box.pack_start(lbl, False, False, 0)
         status_frame.add(status_box)
         main_box.pack_start(status_frame, False, False, 0)
@@ -59,7 +73,7 @@ class RaptorControlCenter(Gtk.Window):
         main_box.pack_start(mode_frame, False, False, 0)
 
         # Anonymity & VPN Frame
-        anon_frame = Gtk.Frame(label=" Tor & Privacy Controls ")
+        anon_frame = Gtk.Frame(label=" Tor &amp; Privacy Controls ")
         anon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         anon_box.set_border_width(8)
 
@@ -98,9 +112,9 @@ class RaptorControlCenter(Gtk.Window):
         ks_frame.add(ks_box)
         main_box.pack_start(ks_frame, False, False, 0)
 
-        # Auto-Refresh Status
+        # Auto-Refresh Status every 2 seconds
         self.refresh_status()
-        GLib.timeout_add_seconds(3, self.refresh_status)
+        GLib.timeout_add_seconds(2, self.refresh_status)
 
     def exec_cmd(self, cmd):
         subprocess.run(cmd)
@@ -129,6 +143,15 @@ class RaptorControlCenter(Gtk.Window):
             ks_st = sec_data.get('killswitch')
             ks_clr = "#FF0000" if ks_st == "ACTIVE" else "#00FF00"
             self.lbl_ks.set_markup(f"<b>Emergency Killswitch:</b> <span color='{ks_clr}'>{ks_st}</span>")
+
+            # Check RAM Wipe status and toggle warning banner
+            wipe_st = sec_data.get('ramwipe', 'INACTIVE')
+            if wipe_st == "ACTIVE":
+                self.lbl_wipe.set_markup("<b>Memory Wipe Engine:</b> <span color='#FF5555'>ACTIVE (Scrubbing RAM)</span>")
+                self.wipe_banner.show_all()
+            else:
+                self.lbl_wipe.set_markup("<b>Memory Wipe Engine:</b> IDLE")
+                self.wipe_banner.hide()
 
         except Exception:
             self.lbl_mode.set_text("Status System Offline")
