@@ -41,6 +41,18 @@ jobs:
             coreutils \
             file
 
+      - name: Fix ubuntu-keyring references
+        run: |
+          echo "Searching for ubuntu-keyring references in build/config..."
+          grep -rn "ubuntu-keyring" build/config/ 2>/dev/null || echo "(none found via grep)"
+          FOUND=$(grep -rl "ubuntu-keyring" build/config/ 2>/dev/null || true)
+          if [ -n "$FOUND" ]; then
+            echo "Patching files: $FOUND"
+            echo "$FOUND" | xargs sed -i 's/\bubuntu-keyring\b/debian-archive-keyring/g'
+          else
+            echo "No literal ubuntu-keyring string found in build/config/ - it may be coming from a package dependency instead."
+          fi
+
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
