@@ -106,7 +106,7 @@ jobs:
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
-            --bootstrap-includes "ca-certificates" \
+            --apt-options "--yes -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false" \
             --security false 2>&1 | sudo tee -a build.log
           sudo lb build 2>&1 | sudo tee -a build.log
 
