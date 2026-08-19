@@ -1,0 +1,8 @@
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        (action.lookup("program") == "/usr/local/bin/raptor-security" ||
+         action.lookup("program") == "/usr/local/bin/raptor-firewall" ||
+         action.lookup("program") == "/usr/local/bin/raptor-killswitch")) {
+        return polkit.Result.YES;
+    }
+});
