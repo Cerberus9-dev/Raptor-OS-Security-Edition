@@ -1,26 +1,22 @@
 #!/bin/sh
 set -e
 
-lb config noauto \
-  --mode debian \
-  --ignore-system-defaults \
-  --architectures amd64 \
-  --distribution bookworm \
-  --archive-areas "main contrib non-free non-free-firmware" \
-  --bootstrap-keyring debian-archive-keyring \
-  --mirror-bootstrap "http://deb.debian.org/debian/" \
-  --mirror-chroot "http://deb.debian.org/debian/" \
-  --mirror-chroot-security "http://deb.debian.org/debian-security/" \
-  --mirror-binary "http://deb.debian.org/debian/" \
-  --mirror-binary-security "http://deb.debian.org/debian-security/" \
-  --debian-installer false \
-  --binary-images iso-hybrid \
-  --bootappend-live "boot=live components username=raptor hostname=raptor-security" \
-  --iso-application "Raptor Security" \
-  --iso-publisher "Raptor OS Project" \
-  --iso-volume "RAPTOR-SECURITY" \
-  --memtest none \
-  --cache true \
-  --cache-packages true \
-  --cache-stages "chroot" \
-  --win32-loader false
+lb config nobase \
+    --mode debian \
+    --architectures amd64 \
+    --distribution bookworm \
+    --parent-distribution bookworm \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --parent-archive-areas "main contrib non-free non-free-firmware" \
+    --apt apt \
+    --apt-indices false \
+    --apt-recommends true \
+    --debian-installer live \
+    --debian-installer-gui true \
+    --bootloader isolinux \
+    --iso-application "Raptor OS Security Edition" \
+    --iso-preparer "Cerberus9-dev" \
+    --iso-publisher "Raptor OS Project" \
+    --iso-volume "RAPTOR-SECURITY" \
+    --win32-loader false \
+    "${@}"
