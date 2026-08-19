@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Mode Firewall Ruleset Engine for Raptor OS
+MODE="${1:-status}"
+
+apply_secure() {
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0 \; policy drop \; \}
+    nft add chain inet filter forward \{ type filter hook forward priority 0 \; policy drop \; \}
+    nft add chain inet filter output \{ type filter hook output priority 0 \; policy accept \; \}
+    
+    # Allow Loopback and Established Connections
+    nft add rule inet filter input iifname "lo" accept
+    nft add rule inet filter input ct state established,related accept
+    nft add rule inet filter input meta l4proto icmp accept
+    echo "[Raptor Firewall] SECURE mode applied (Inbound Drop, Outbound Allow)."
+}
+
+apply_hardened() {
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0 \; policy drop \; \}
+    nft add chain inet filter forward \{ type filter hook forward priority 0 \; policy drop \; \}
+    nft add chain inet filter output \{ type filter hook output priority 0 \; policy drop \; \}
+
+    # Allow Loopback
+    nft add rule inet filter input iifname "lo" accept
+    nft add rule inet filter output oifname "lo" accept
+
+    # Allow Established Traffic
+    nft add rule inet filter input ct state established,related accept
+    nft add rule inet filter output ct state established,related accept
+
+    # Restrict Outbound to Standard Web/DNS Ports
+    nft add rule inet filter output udp dport 53 accept
+    nft add rule inet filter output tcp dport { 53, 80, 443 } accept
+    echo "[Raptor Firewall] HARDENED mode applied (Strict Egress Filtering Active)."
+}
+
+apply_lockdown() {
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input \{ type filter hook input priority 0 \; policy drop \; \}
+    nft add chain inet filter forward \{ type filter hook forward priority 0 \; policy drop \; \}
+    nft add chain inet filter output \{ type filter hook output priority 0 \; policy drop \; \}
+
+    # Only Allow Internal Loopback Communication
+    nft add rule inet filter input iifname "lo" accept
+    nft add rule inet filter output oifname "lo" accept
+    echo "[Raptor Firewall] LOCKDOWN mode applied (All External Traffic Cut)."
+}
+
+case "$MODE" in
+    secure)   apply_secure ;;
+    hardened) apply_hardened ;;
+    lockdown) apply_lockdown ;;
+    status)   nft list ruleset ;;
+    *)        echo "Usage: $0 {secure|hardened|lockdown|status}" && exit 1 ;;
+esac
