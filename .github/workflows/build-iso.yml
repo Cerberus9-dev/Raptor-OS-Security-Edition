@@ -1,8 +1,10 @@
 name: Build Raptor Security Edition ISO
+
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+
 jobs:
   build-security-iso:
     name: Build Raptor Security ISO
@@ -11,6 +13,7 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Install Build Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -36,22 +39,49 @@ jobs:
             dosfstools \
             python3 \
             coreutils \
-            file
+            file \
+            debian-archive-keyring \
+            ca-certificates
+
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
           mkdir -p build/config/package-lists
+          mkdir -p build/config/includes.chroot/etc/apt/apt.conf.d
+
           cat << 'EOF' > build/config/archives/librewolf.list.chroot
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
+
           cat << 'EOF' > build/config/archives/librewolf.list.binary
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
+
           echo "ca-certificates" >> build/config/package-lists/raptor-security.list.chroot
+
+          # Prevents the chicken-and-egg TLS failure: on a fresh debootstrap
+          # chroot there are no CA certs yet, so the very first apt-get update
+          # (which includes the HTTPS-only LibreWolf repo) fails cert
+          # verification before ca-certificates can be installed to fix it.
+          # This is removed by a hook once ca-certificates is actually installed.
+          cat << 'EOF' > build/config/includes.chroot/etc/apt/apt.conf.d/99no-cert-check
+          Acquire::https::Verify-Peer "false";
+          Acquire::https::Verify-Host "false";
+          EOF
+
+          mkdir -p build/config/hooks/live
+          cat << 'EOF' > build/config/hooks/live/9999-restore-cert-check.hook.chroot
+          #!/bin/sh
+          set -e
+          rm -f /etc/apt/apt.conf.d/99no-cert-check
+          EOF
+          chmod +x build/config/hooks/live/9999-restore-cert-check.hook.chroot
+
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh
+
       - name: Build ISO
         run: |
           cd build
@@ -68,6 +98,7 @@ jobs:
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
             --security true 2>&1 | sudo tee -a build.log
           sudo lb build 2>&1 | sudo tee -a build.log
+
       - name: Prepare Artifact
         if: success()
         run: |
@@ -81,6 +112,7 @@ jobs:
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
           sudo mv "$GENERATED_ISO" "$FINAL_NAME"
           sudo sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
+
       - name: Upload ISO
         if: success()
         uses: actions/upload-artifact@v4
@@ -89,6 +121,7 @@ jobs:
           path: |
             build/*.iso
             build/*.sha256
+
       - name: Upload Log on Failure
         if: failure()
         uses: actions/upload-artifact@v4
