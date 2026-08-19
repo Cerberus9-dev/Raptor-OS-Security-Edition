@@ -1,10 +1,8 @@
 name: Build Raptor Security Edition ISO
-
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
-
 jobs:
   build-security-iso:
     name: Build Raptor Security ISO
@@ -13,7 +11,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Install Build Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -40,7 +37,6 @@ jobs:
             python3 \
             coreutils \
             file
-
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
@@ -50,12 +46,10 @@ jobs:
           cat << 'EOF' > build/config/archives/librewolf.list.binary
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
-
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh
-
       - name: Build ISO
         run: |
           cd build
@@ -72,7 +66,6 @@ jobs:
             --debootstrap-options "--include=ca-certificates" \
             --security true
           sudo lb build 2>&1 | sudo tee build.log
-
       - name: Prepare Artifact
         if: success()
         run: |
@@ -84,9 +77,8 @@ jobs:
           fi
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          mv "$GENERATED_ISO" "$FINAL_NAME"
-          sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
-
+          sudo mv "$GENERATED_ISO" "$FINAL_NAME"
+          sudo sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
       - name: Upload ISO
         if: success()
         uses: actions/upload-artifact@v4
@@ -95,7 +87,6 @@ jobs:
           path: |
             build/*.iso
             build/*.sha256
-
       - name: Upload Log on Failure
         if: failure()
         uses: actions/upload-artifact@v4
