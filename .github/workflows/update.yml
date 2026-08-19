@@ -155,6 +155,15 @@ jobs:
           chmod +x auto/config
           ./auto/config
 
+      # Same defensive fix as build-iso.yml — see that workflow's
+      # comment for the full explanation and the honest confidence
+      # level (this one is unverified, unlike everything else in
+      # these workflows).
+      - name: Ensure a clean, valid TMPDIR before building
+        run: |
+          unset TMPDIR
+          echo "TMPDIR=/tmp" >> "$GITHUB_ENV"
+
       - name: Build updated ISO
         working-directory: build
         run: sudo lb build
