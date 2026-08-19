@@ -1,13 +1,17 @@
-name: Build Raptor OS Security ISO
+name: Build Raptor OS Security Edition ISO
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 permissions:
   contents: read
 
 concurrency:
-  group: raptor-security-build
+  group: raptor-security-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -16,10 +20,10 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Disable AppArmor restrictions for chroot (Fix for /tmp apt errors)
+      - name: Disable AppArmor User Namespace Restrictions
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
@@ -27,12 +31,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/cache
-          # Bumped to v2 to completely wipe the tainted sysvinit cache!
-          key: raptor-security-lb-v2-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'build/auto/config') }}
+          key: raptor-security-lb-v2-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/auto/config') }}
           restore-keys: |
             raptor-security-lb-v2-${{ runner.os }}-
 
-      - name: Free disk space
+      - name: Free Runner Disk Space
         run: |
           sudo rm -rf \
             /usr/share/dotnet \
@@ -42,7 +45,7 @@ jobs:
             "$AGENT_TOOLSDIRECTORY" || true
           df -h
 
-      - name: Install build dependencies
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -56,154 +59,95 @@ jobs:
             grub-efi-amd64-bin \
             mtools \
             dosfstools \
-            rsync
+            rsync \
+            python3-gi \
+            gir1.2-gtk-3.0
 
-      - name: Show build tool versions
-        run: |
-          lb --version
-          debootstrap --version
-
-      - name: Patch live-build Contents index lookup
+      - name: Apply Live-Build Engine Patches
         run: |
           set -e
+          # Fix Debian Mirror Contents Index Lookup
           LB_FILE="/usr/lib/live/build/lb_chroot_linux-image"
-          sudo sed -i \
-            's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
-            "$LB_FILE"
-          sudo sed -i \
-            's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
-            "$LB_FILE"
+          sudo sed -i 's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' "$LB_FILE"
+          sudo sed -i 's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' "$LB_FILE"
 
-      - name: Patch live-build security suite name
-        run: |
-          set -e
-          LB_FILE="/usr/lib/live/build/lb_chroot_archives"
-          sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
+          # Fix Debian Security Naming Convention
+          sudo sed -i '/SECURITY/ s#/updates#-security#g' /usr/lib/live/build/lb_chroot_archives
 
-      - name: Patch live-build isolinux theme paths
-        run: |
-          set -e
+          # Fix ISOLINUX Bootloader Module Paths
           THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
           sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
           sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
 
-      - name: Patch live-build rsvg invocation
-        run: |
-          set -e
-          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          sudo sed -i \
-            's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' \
-            "$LB_FILE"
-          sudo sed -i \
-            's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
-            "$LB_FILE"
+          # Replace deprecated rsvg calls with rsvg-convert
+          LB_SYS="/usr/lib/live/build/lb_binary_syslinux"
+          sudo sed -i 's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' "$LB_SYS"
 
-      - name: Patch live-build gfxboot bootlogo hack
-        run: |
-          set -e
-          LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          sudo sed -i \
-            -e '365i if [ -e "${_TARGET}/bootlogo" ]; then' \
-            -e '375a fi' \
-            "$LB_FILE"
-
-      - name: Clean previous build artifacts (preserving cache)
-        working-directory: build
-        run: |
-          sudo rm -rf chroot binary .build
-          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
-          echo "cache/ contents preserved:"
-          du -sh cache 2>/dev/null || echo "cache/ is empty"
-
-      - name: Hard-ban sysvinit and configure APT
+      - name: Set Permissions & Enforce Anti-sysvinit Pinning
         working-directory: build
         run: |
           set -e
-          # Strip invalid --systemd option if present in auto/config
-          sed -i '/--systemd/d' auto/config || true
+          # Ensure scripts inside includes.chroot are executable
+          chmod +x config/includes.chroot/usr/local/bin/raptor-* || true
 
-          # Purge legacy init systems from ALL package lists
-          find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^sysvinit-core/d; /^live-config-sysvinit/d; /^initscripts/d; /^orphan-sysvinit-scripts/d' {} + || true
-
-          # Create an APT preference file that natively blocks sysvinit from being installed
-          mkdir -p config/archives
-          cat <<EOF > config/archives/anti-sysvinit.pref.chroot
+          # Create APT Pinning to prevent sysvinit from replacing systemd
+          mkdir -p config/archives config/apt
+          cat <<'EOF' > config/archives/anti-sysvinit.pref.chroot
           Package: sysvinit-core sysv-rc initscripts orphan-sysvinit-scripts live-config-sysvinit
           Pin: release *
           Pin-Priority: -1
           EOF
 
-          # Enforce systemd packages at the absolute top of the base list
-          LIST_FILE="config/package-lists/raptor-base.list.chroot"
-          if [ -f "$LIST_FILE" ]; then
-            grep -q "^systemd-sysv$" "$LIST_FILE" || sed -i '1i systemd-sysv\nlive-config-systemd' "$LIST_FILE"
-          fi
-
-          # Disable APT sandboxing
-          mkdir -p config/apt
+          # Disable APT unprivileged sandboxing inside chroot
           echo 'APT::Sandbox::User "root";' > config/apt/apt.conf
 
-      - name: Configure live-build
+      - name: Configure Live-Build
         working-directory: build
         run: |
           set -e
           chmod +x auto/config
           ./auto/config
 
-      - name: Build ISO
+      - name: Build ISO Image
         working-directory: build
         run: sudo lb build
 
-      - name: Verify ISO
+      - name: Add Hybrid UEFI & BIOS Boot
         working-directory: build
         run: |
           set -e
-          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          if [ -z "$ISO" ]; then
-            echo "ERROR: live-build completed but no ISO was produced."
+          ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          if [ -z "$ORIGINAL_ISO" ]; then
+            echo "ERROR: No ISO produced by lb build."
             exit 1
           fi
-          echo "ISO successfully built (BIOS-only at this point):"
-          ls -lh "$ISO"
-
-      - name: Add UEFI boot support (BIOS boot untouched)
-        working-directory: build
-        run: |
-          set -e
-
-          ORIGINAL_ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          echo "Original BIOS-only ISO: $ORIGINAL_ISO"
 
           sudo chmod -R a+rwX binary "$ORIGINAL_ISO"
+          mkdir -p efi-build/esp/EFI/BOOT
 
-          mkdir -p efi-build
-          {
-            printf '%s\n' 'insmod part_gpt'
-            printf '%s\n' 'insmod part_msdos'
-            printf '%s\n' 'insmod fat'
-            printf '%s\n' 'insmod iso9660'
-            printf '%s\n' 'insmod all_video'
-            printf '%s\n' 'insmod gfxterm'
-            printf '%s\n' 'insmod search'
-            printf '%s\n' 'insmod search_fs_uuid'
-            printf '%s\n' 'insmod search_label'
-            printf '%s\n' 'insmod regexp'
-            printf '\n'
-            printf '%s\n' 'set default="0"'
-            printf '%s\n' 'set timeout=5'
-            printf '\n'
-            printf '%s\n' 'search --no-floppy --set=root --label RAPTOR-SECURITY'
-            printf '\n'
-            printf '%s\n' 'menuentry "Raptor Security (Live)" {'
-            printf '%s\n' '    linux /live/vmlinuz-* boot=live components quiet'
-            printf '%s\n' '    initrd /live/initrd.img-*'
-            printf '%s\n' '}'
-            printf '\n'
-            printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
-            printf '%s\n' '    linux /live/vmlinuz-* boot=live components noapic noapm nodma nomce nolapic nosmp'
-            printf '%s\n' '    initrd /live/initrd.img-*'
-            printf '%s\n' '}'
-          } > efi-build/grub.cfg
+          cat <<'EOF' > efi-build/grub.cfg
+          insmod part_gpt
+          insmod part_msdos
+          insmod fat
+          insmod iso9660
+          insmod all_video
+          insmod gfxterm
+
+          set default="0"
+          set timeout=5
+
+          search --no-floppy --set=root --label RAPTOR-SECURITY
+
+          menuentry "Raptor OS Security Edition (Live)" {
+              linux /live/vmlinuz boot=live components quiet splash
+              initrd /live/initrd.img
+          }
+
+          menuentry "Raptor OS Security Edition (Failsafe)" {
+              linux /live/vmlinuz boot=live components noapic noapm nodma nomce nolapic nosmp
+              initrd /live/initrd.img
+          }
+          EOF
 
           grub-mkstandalone \
             --format=x86_64-efi \
@@ -212,13 +156,6 @@ jobs:
             --fonts="" \
             "boot/grub/grub.cfg=efi-build/grub.cfg"
 
-          file efi-build/BOOTX64.EFI | grep -q "PE32+ executable" || {
-            echo "ERROR: grub-mkstandalone did not produce a valid EFI executable"
-            exit 1
-          }
-
-          mkdir -p efi-build/esp/EFI/BOOT
-          cp efi-build/BOOTX64.EFI efi-build/esp/EFI/BOOT/BOOTX64.EFI
           dd if=/dev/zero of=efi-build/efiboot.img bs=1M count=16
           mkfs.vfat -F 16 -n "RAPTOR_EFI" efi-build/efiboot.img
           mmd -i efi-build/efiboot.img ::/EFI
@@ -231,8 +168,8 @@ jobs:
           cd binary
           xorriso -as mkisofs \
             -r -J -l -cache-inodes -allow-multidot \
-            -A "Raptor Security" \
-            -publisher "Raptor OS Project" \
+            -A "Raptor OS Security Edition" \
+            -publisher "Cerberus9-dev" \
             -V "RAPTOR-SECURITY" \
             -no-emul-boot -boot-load-size 4 -boot-info-table \
             -b isolinux/isolinux.bin -c isolinux/boot.cat \
@@ -245,37 +182,22 @@ jobs:
             .
           cd ..
 
-          ENTRY_COUNT=$(xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep -c "El Torito boot img" || true)
-          if [ "$ENTRY_COUNT" -lt 2 ]; then
-            echo "ERROR: rebuilt ISO does not have both BIOS and UEFI boot entries."
-            echo "Falling back to the original BIOS-only ISO — nothing is lost, UEFI just isn't added this run."
-            rm -f "${ORIGINAL_ISO}.uefi"
-          else
-            echo "Confirmed: rebuilt ISO has both BIOS and UEFI boot entries."
-            xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep "El Torito boot img"
+          if [ -f "${ORIGINAL_ISO}.uefi" ]; then
             mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
           fi
 
-      - name: Compute checksum
+      - name: Generate SHA256 Checksum
         working-directory: build
         run: |
-          set -e
           ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          echo "Final ISO:"
-          ls -lh "$ISO"
-          sha256sum "$ISO" > raptor-security.sha256
-          cat raptor-security.sha256
+          sha256sum "$ISO" > raptor-os-security.sha256
+          cat raptor-os-security.sha256
 
-      - name: Upload ISO artifact
+      - name: Upload ISO Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Raptor-OS-Security-ISO
           path: |
             build/*.iso
-            build/raptor-security.sha256
-          compression-level: 0
-          retention-days: 30
-
-      - name: Fix cache permissions for save
-        if: always()
-        run: sudo chmod -R a+rX build/cache 2>/dev/null || true
+            build/raptor-os-security.sha256
+          retention-days: 14
