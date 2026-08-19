@@ -42,7 +42,6 @@ wireguard-tools
 network-manager
 network-manager-openvpn
 network-manager-openvpn-gnome
-network-manager-wireguard
 
 # System Hardening, Privacy & Anti-Forensics
 macchanger
