@@ -95,6 +95,7 @@ jobs:
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
+            --linux-flavours amd64 \
             --linux-packages linux-image \
             --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
