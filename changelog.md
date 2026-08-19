@@ -6,15 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2.0.0] - 2026-08-19
 
 ### Added
-- **Raptor Control Center:** Introduced a native graphical GUI dashboard for real-time monitoring of firewall rules and quick access to security toggles.
-- **Dynamic Posture Engine:** Added the ability to hot-swap between Secure, Hardened, and Lockdown modes without dropping local sessions.
-- **Hardware Killswitch:** Implemented `raptor-killswitch` for immediate emergency termination of all physical network hardware.
+- **Raptor Control Center:** Introduced a Kodachi-inspired graphical dashboard. All core security features are now fully integrated into a one-click GUI, eliminating the need for terminal commands.
+- **One-Click Posture Engine:** Added dashboard widgets to hot-swap between Secure, Hardened, and Lockdown modes seamlessly.
+- **GUI Panic Button:** Implemented a visual Emergency Killswitch within the dashboard for immediate termination of all network hardware.
 
 ### Changed
-- **Script Infrastructure:** Completed a massive, system-wide overhaul of all underlying bash scripts to improve execution speed, code readability, and stability under heavy loads.
-- **Firewall Backend:** Migrated from legacy `iptables` to the modern `nftables` architecture for atomic ruleset flushing.
-- **Menu Hierarchy:** Reorganized the XDG application menus to group security tools by operational phase (Reconnaissance, Web Security, Forensics, etc.) rather than alphabetical lists.
+- **Backend Infrastructure:** Overhauled all core system bash scripts to act as a silent, high-speed backend for the new Control Center.
+- **Firewall Architecture:** Migrated from legacy `iptables` to `nftables` to support instant, atomic ruleset switching when users click a new profile in the dashboard.
+- **Menu Hierarchy:** Reorganized the application menus to logically group security tools by operational phase (Reconnaissance, Web Security, Forensics) for faster navigation.
 
 ### Removed
-- Removed legacy systemd-sysv dependencies to enforce modern init system architecture.
-- Stripped out unnecessary background daemons that were exposing unneeded local ports.
+- Deprecated end-user CLI requirements for security modes; all features are now GUI-driven.
+- Removed legacy systemd-sysv dependencies to enforce a modern, faster init system.
+- Stripped out unnecessary background daemons that exposed unneeded local ports.
