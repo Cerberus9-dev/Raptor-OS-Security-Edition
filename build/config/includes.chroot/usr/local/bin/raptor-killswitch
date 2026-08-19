@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_FILE="/etc/raptor/killswitch_active"
+mkdir -p /etc/raptor
+
+ACTION="${1:-status}"
+
+enable_killswitch() {
+    touch "$STATE_FILE"
+    nmcli networking off 2>/dev/null || true
+    ip link set dev eth0 down 2>/dev/null || true
+    ip link set dev wlan0 down 2>/dev/null || true
+    /usr/local/bin/raptor-firewall lockdown
+    echo "[Raptor Killswitch] NETWORK KILLED. All network devices disabled."
+}
+
+disable_killswitch() {
+    rm -f "$STATE_FILE"
+    nmcli networking on 2>/dev/null || true
+    CURRENT_MODE=$(cat /etc/raptor/current_mode 2>/dev/null || echo "secure")
+    /usr/local/bin/raptor-firewall "$CURRENT_MODE"
+    echo "[Raptor Killswitch] Network restored. Re-applied $CURRENT_MODE mode."
+}
+
+case "$ACTION" in
+    on|enable)   enable_killswitch ;;
+    off|disable) disable_killswitch ;;
+    status)
+        if [ -f "$STATE_FILE" ]; then
+            echo "Killswitch: ACTIVE (Network Blocked)"
+        else
+            echo "Killswitch: INACTIVE"
+        fi
+        ;;
+    *) echo "Usage: $0 {on|off|status}" && exit 1 ;;
+esac
