@@ -33,14 +33,20 @@ if [ -f "$POLICIES_JSON" ]; then
   python3 -m json.tool "$POLICIES_JSON" >/dev/null 2>&1 || ERRORS=$((ERRORS + 1))
 fi
 
-echo "==> [3/4] Checking Essential System Configurations..."
+echo "==> [3/4] Checking Essential System Configurations & Polkit Rules..."
 if [ ! -f "build/config/includes.chroot/etc/nftables.conf" ]; then
   echo "  [ERROR] Missing firewall config: build/config/includes.chroot/etc/nftables.conf"
   ERRORS=$((ERRORS + 1))
 fi
 
 if [ ! -f "build/config/includes.chroot/etc/systemd/system/raptor-sdmem.service" ]; then
-  echo "  [ERROR] Missing RAM wipe service unit"
+  echo "  [ERROR] Missing RAM wipe service unit: build/config/includes.chroot/etc/systemd/system/raptor-sdmem.service"
+  ERRORS=$((ERRORS + 1))
+fi
+
+POLKIT_RULE="build/config/includes.chroot/etc/polkit-1/rules.d/50-raptor-mode-manager.rules"
+if [ ! -f "$POLKIT_RULE" ]; then
+  echo "  [ERROR] Missing PolicyKit rule file: $POLKIT_RULE"
   ERRORS=$((ERRORS + 1))
 fi
 
