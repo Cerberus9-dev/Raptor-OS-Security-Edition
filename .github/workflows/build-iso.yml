@@ -111,7 +111,7 @@ jobs:
           echo "===== after patch ====="
           grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
 
-      - name: Patch live-build gfxboot bootlogo hack (Debian-mode no-op)
+      - name: Patch live-build gfxboot bootlogo hack
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
@@ -137,8 +137,13 @@ jobs:
         working-directory: build
         run: |
           set -e
+          # Strip invalid --systemd option if present in auto/config
+          sed -i '/--systemd/d' auto/config || true
+
+          # Automatically replace live-config-sysvinit with live-config-systemd across the build tree
           find config/ auto/ -type f -exec sed -i 's/live-config-sysvinit/live-config-systemd/g' {} +
-          grep -q "\-\-systemd true" auto/config || sed -i '/lb config noauto/a \  --systemd true \\' auto/config
+
+          # Force systemd packages into the base chroot package list
           LIST_FILE="config/package-lists/raptor-base.list.chroot"
           if [ -f "$LIST_FILE" ]; then
             grep -q "^systemd-sysv$" "$LIST_FILE" || echo "systemd-sysv" >> "$LIST_FILE"
