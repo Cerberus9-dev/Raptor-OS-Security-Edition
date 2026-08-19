@@ -9,95 +9,130 @@ from gi.repository import Gtk, GLib
 
 class RaptorControlCenter(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Raptor Security Control Center")
+        super().__init__(title="Raptor OS - Tactical Control Center")
         self.set_border_width(16)
-        self.set_default_size(520, 400)
+        self.set_default_size(580, 520)
         self.set_position(Gtk.WindowPosition.CENTER)
 
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.add(main_box)
 
         # Header
         title_label = Gtk.Label()
-        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security Dashboard</span>")
+        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security & Anonymity</span>")
         main_box.pack_start(title_label, False, False, 0)
 
-        # Status Display Frame
-        self.status_card = Gtk.Frame(label=" Live Security Posture ")
-        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        status_box.set_border_width(12)
+        # Live Status Dashboard
+        status_frame = Gtk.Frame(label=" Live Security & Privacy Status ")
+        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        status_box.set_border_width(10)
         
         self.lbl_mode = Gtk.Label()
-        self.lbl_firewall = Gtk.Label()
+        self.lbl_tor = Gtk.Label()
+        self.lbl_vpn = Gtk.Label()
+        self.lbl_dns = Gtk.Label()
         self.lbl_ks = Gtk.Label()
 
-        status_box.pack_start(self.lbl_mode, False, False, 0)
-        status_box.pack_start(self.lbl_firewall, False, False, 0)
-        status_box.pack_start(self.lbl_ks, False, False, 0)
-        self.status_card.add(status_box)
-        main_box.pack_start(self.status_card, False, False, 0)
+        for lbl in [self.lbl_mode, self.lbl_tor, self.lbl_vpn, self.lbl_dns, self.lbl_ks]:
+            status_box.pack_start(lbl, False, False, 0)
+        status_frame.add(status_box)
+        main_box.pack_start(status_frame, False, False, 0)
 
-        # Mode Selector
+        # Mode Selector Frame
         mode_frame = Gtk.Frame(label=" Security Profiles ")
-        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        mode_box.set_border_width(12)
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        mode_box.set_border_width(8)
 
-        btn_secure = Gtk.Button(label="SECURE")
-        btn_secure.connect("clicked", lambda x: self.set_mode("secure"))
+        btn_sec = Gtk.Button(label="SECURITY")
+        btn_sec.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "security"]))
+        
+        btn_hard = Gtk.Button(label="HARDENED")
+        btn_hard.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "hardened"]))
+        
+        btn_lock = Gtk.Button(label="LOCKDOWN")
+        btn_lock.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "lockdown"]))
 
-        btn_hardened = Gtk.Button(label="HARDENED")
-        btn_hardened.connect("clicked", lambda x: self.set_mode("hardened"))
-
-        btn_lockdown = Gtk.Button(label="LOCKDOWN")
-        btn_lockdown.connect("clicked", lambda x: self.set_mode("lockdown"))
-
-        mode_box.pack_start(btn_secure, True, True, 0)
-        mode_box.pack_start(btn_hardened, True, True, 0)
-        mode_box.pack_start(btn_lockdown, True, True, 0)
+        mode_box.pack_start(btn_sec, True, True, 0)
+        mode_box.pack_start(btn_hard, True, True, 0)
+        mode_box.pack_start(btn_lock, True, True, 0)
         mode_frame.add(mode_box)
         main_box.pack_start(mode_frame, False, False, 0)
 
-        # Emergency Killswitch Controls
+        # Anonymity & VPN Frame
+        anon_frame = Gtk.Frame(label=" Tor & Privacy Controls ")
+        anon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        anon_box.set_border_width(8)
+
+        btn_tor_on = Gtk.Button(label="Route via Tor")
+        btn_tor_on.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "tor-on"]))
+
+        btn_tor_off = Gtk.Button(label="Clear Tor Route")
+        btn_tor_off.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "tor-off"]))
+
+        btn_nym = Gtk.Button(label="New Tor Identity")
+        btn_nym.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "new-identity"]))
+
+        btn_vpn = Gtk.Button(label="VPN Connections")
+        btn_vpn.connect("clicked", lambda x: self.exec_cmd(["nm-connection-editor"]))
+
+        anon_box.pack_start(btn_tor_on, True, True, 0)
+        anon_box.pack_start(btn_tor_off, True, True, 0)
+        anon_box.pack_start(btn_nym, True, True, 0)
+        anon_box.pack_start(btn_vpn, True, True, 0)
+        anon_frame.add(anon_box)
+        main_box.pack_start(anon_frame, False, False, 0)
+
+        # Emergency Controls
         ks_frame = Gtk.Frame(label=" Emergency Controls ")
-        ks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        ks_box.set_border_width(12)
+        ks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        ks_box.set_border_width(8)
 
         btn_ks_on = Gtk.Button(label="ENGAGE KILLSWITCH")
-        btn_ks_on.connect("clicked", lambda x: self.toggle_killswitch("on"))
+        btn_ks_on.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-killswitch", "on"]))
 
         btn_ks_off = Gtk.Button(label="RESTORE NETWORK")
-        btn_ks_off.connect("clicked", lambda x: self.toggle_killswitch("off"))
+        btn_ks_off.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-killswitch", "off"]))
 
         ks_box.pack_start(btn_ks_on, True, True, 0)
         ks_box.pack_start(btn_ks_off, True, True, 0)
         ks_frame.add(ks_box)
         main_box.pack_start(ks_frame, False, False, 0)
 
-        # Initial Status & Auto-refresh every 3 seconds
+        # Auto-Refresh Status
         self.refresh_status()
         GLib.timeout_add_seconds(3, self.refresh_status)
 
+    def exec_cmd(self, cmd):
+        subprocess.run(cmd)
+        self.refresh_status()
+
     def refresh_status(self):
         try:
-            res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-status"]).decode("utf-8")
-            data = json.loads(res)
-            self.lbl_mode.set_markup(f"<b>Security Mode:</b> <span color='#00FF00'>{data.get('mode')}</span>")
-            self.lbl_firewall.set_markup(f"<b>Firewall Engine:</b> {data.get('firewall')}")
+            sec_res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-status"]).decode("utf-8")
+            sec_data = json.loads(sec_res)
+
+            anon_res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-anonymity", "status"]).decode("utf-8")
+            anon_data = json.loads(anon_res)
+
+            self.lbl_mode.set_markup(f"<b>Security Mode:</b> <span color='#00FF00'>{sec_data.get('mode')}</span>")
             
-            ks_status = data.get('killswitch')
-            color = "#FF0000" if ks_status == "ACTIVE" else "#00FF00"
-            self.lbl_ks.set_markup(f"<b>Killswitch Status:</b> <span color='{color}'>{ks_status}</span>")
-        except Exception as e:
-            self.lbl_mode.set_text("Status Agent Offline")
+            tor_st = anon_data.get('tor_proxy')
+            tor_clr = "#00FF00" if tor_st == "ENABLED" else "#888888"
+            self.lbl_tor.set_markup(f"<b>Transparent Tor Proxy:</b> <span color='{tor_clr}'>{tor_st}</span>")
+
+            vpn_st = anon_data.get('vpn')
+            vpn_clr = "#00FF00" if vpn_st == "CONNECTED" else "#888888"
+            self.lbl_vpn.set_markup(f"<b>VPN Connection:</b> <span color='{vpn_clr}'>{vpn_st}</span>")
+
+            self.lbl_dns.set_markup(f"<b>DNSCrypt Status:</b> {anon_data.get('dnscrypt')}")
+
+            ks_st = sec_data.get('killswitch')
+            ks_clr = "#FF0000" if ks_st == "ACTIVE" else "#00FF00"
+            self.lbl_ks.set_markup(f"<b>Emergency Killswitch:</b> <span color='{ks_clr}'>{ks_st}</span>")
+
+        except Exception:
+            self.lbl_mode.set_text("Status System Offline")
         return True
-
-    def set_mode(self, mode):
-        subprocess.run(["pkexec", "/usr/local/bin/raptor-security", mode])
-        self.refresh_status()
-
-    def toggle_killswitch(self, action):
-        subprocess.run(["pkexec", "/usr/local/bin/raptor-killswitch", action])
-        self.refresh_status()
 
 if __name__ == "__main__":
     app = RaptorControlCenter()
