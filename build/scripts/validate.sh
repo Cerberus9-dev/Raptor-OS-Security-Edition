@@ -41,7 +41,7 @@ if [ "$EXTRA_LISTS" -gt 0 ]; then
 fi
 
 if [ "$ERRORS" -gt 0 ]; then
-  echo "❌ Validation failed with $ERRORS error(s)."
+  echo "[FAIL] Validation failed with $ERRORS error(s)."
   exit 1
 fi
-echo "✅ All pre-build checks passed successfully."
+echo "[SUCCESS] All pre-build checks passed successfully."
