@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONF_DIR="/etc/raptor"
+mkdir -p "$CONF_DIR"
+
+ACTION="${1:-status}"
+
+enable_tor_proxy() {
+    systemctl start tor
+    
+    # Configure nftables to route TCP and DNS through Tor SOCKS (127.0.0.1:9050 / 9053)
+    nft flush ruleset
+    nft -f - <<'EOF'
+table inet tor_proxy {
+    chain output {
+        type filter hook output priority 0; policy accept;
+        # Exclude local and Tor user traffic
+        skuid "debian-tor" accept
+        oifname "lo" accept
+        
+        # Redirect DNS (53) to Tor DNS port (9053)
+        udp dport 53 redirect to :9053
+        tcp dport 53 redirect to :9053
+        
+        # Redirect all TCP traffic to Tor TransPort (9040)
+        meta l4proto tcp redirect to :9040
+    }
+}
+EOF
+    echo "ENABLED" > "${CONF_DIR}/tor_proxy_status"
+}
+
+disable_tor_proxy() {
+    nft flush table inet tor_proxy 2>/dev/null || true
+    # Re-apply current baseline mode rules
+    MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURITY")
+    /usr/local/bin/raptor-firewall "${MODE,,}"
+    echo "DISABLED" > "${CONF_DIR}/tor_proxy_status"
+}
+
+change_identity() {
+    if systemctl is-active --quiet tor; then
+        echo -e 'AUTHENTICATE ""\nSIGNAL NEWNYM\nQUIT' | nc 127.0.0.1 9051 2>/dev/null || true
+    fi
+}
+
+toggle_dnscrypt() {
+    if systemctl is-active --quiet dnscrypt-proxy; then
+        systemctl stop dnscrypt-proxy
+        echo "DISABLED" > "${CONF_DIR}/dnscrypt_status"
+    else
+        systemctl start dnscrypt-proxy
+        echo "ENABLED" > "${CONF_DIR}/dnscrypt_status"
+    fi
+}
+
+case "$ACTION" in
+    tor-on) enable_tor_proxy ;;
+    tor-off) disable_tor_proxy ;;
+    new-identity) change_identity ;;
+    dnscrypt-toggle) toggle_dnscrypt ;;
+    status)
+        TOR_STATUS=$(cat "${CONF_DIR}/tor_proxy_status" 2>/dev/null || echo "DISABLED")
+        DNS_STATUS=$(cat "${CONF_DIR}/dnscrypt_status" 2>/dev/null || echo "DISABLED")
+        VPN_ACTIVE=$(nmcli connection show --active | grep -E "vpn|wireguard" >/dev/null && echo "CONNECTED" || echo "DISCONNECTED")
+        cat <<EOF
+{
+  "tor_proxy": "${TOR_STATUS}",
+  "dnscrypt": "${DNS_STATUS}",
+  "vpn": "${VPN_ACTIVE}"
+}
+EOF
+        ;;
+    *) echo "Usage: $0 {tor-on|tor-off|new-identity|dnscrypt-toggle|status}" && exit 1 ;;
+esac
