@@ -55,7 +55,7 @@ jobs:
             echo "removed from: $f"
           done
 
-      - name: Configure Backports Repo
+      - name: Configure Backports & Security Repos
         run: |
           # NOTE: build/config/archives/librewolf.list.{chroot,binary} are already
           # committed with the correct https://deb.librewolf.net source and a working
@@ -68,6 +68,18 @@ jobs:
           EOF
           cat << 'EOF' > build/config/archives/backports.list.binary
           deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+          EOF
+
+          # live-build's built-in --security handling in this version computes the
+          # suite as "bookworm/updates" (the pre-Stretch naming scheme), which 404s -
+          # Debian has used "bookworm-security" since Stretch. There's no lb config
+          # flag to override the computed suite name, so --security is disabled below
+          # and the correct archive is added by hand instead.
+          cat << 'EOF' > build/config/archives/security.list.chroot
+          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          EOF
+          cat << 'EOF' > build/config/archives/security.list.binary
+          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
 
       - name: Run Validation Check
@@ -86,12 +98,13 @@ jobs:
             --linux-packages linux-image \
             --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
+            --debootstrap-options "--include=ca-certificates,apt-transport-https" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --security true
+            --security false
           sudo lb build 2>&1 | sudo tee build.log
 
       - name: Prepare Artifact
