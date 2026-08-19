@@ -1,37 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-STATE_FILE="/etc/raptor/killswitch_active"
-mkdir -p /etc/raptor
+CONF_DIR="/etc/raptor"
+mkdir -p "$CONF_DIR"
 
-ACTION="${1:-status}"
+ACTION="${1:-on}"
 
-enable_killswitch() {
-    touch "$STATE_FILE"
-    nmcli networking off 2>/dev/null || true
-    ip link set dev eth0 down 2>/dev/null || true
-    ip link set dev wlan0 down 2>/dev/null || true
-    /usr/local/bin/raptor-firewall lockdown
-    echo "[Raptor Killswitch] NETWORK KILLED. All network devices disabled."
+if [ "${ACTION,,}" = "on" ]; then
+    # Block wireless radios & drop all packet processing
+    rfkill block all 2>/dev/null || true
+    nft flush ruleset
+    nft -f - <<EOF
+table inet killswitch {
+    chain input { type filter hook input priority 0; policy drop; }
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output { type filter hook output priority 0; policy drop; }
 }
-
-disable_killswitch() {
-    rm -f "$STATE_FILE"
-    nmcli networking on 2>/dev/null || true
-    CURRENT_MODE=$(cat /etc/raptor/current_mode 2>/dev/null || echo "secure")
-    /usr/local/bin/raptor-firewall "$CURRENT_MODE"
-    echo "[Raptor Killswitch] Network restored. Re-applied $CURRENT_MODE mode."
-}
-
-case "$ACTION" in
-    on|enable)   enable_killswitch ;;
-    off|disable) disable_killswitch ;;
-    status)
-        if [ -f "$STATE_FILE" ]; then
-            echo "Killswitch: ACTIVE (Network Blocked)"
-        else
-            echo "Killswitch: INACTIVE"
-        fi
-        ;;
-    *) echo "Usage: $0 {on|off|status}" && exit 1 ;;
-esac
+EOF
+    touch "${CONF_DIR}/killswitch_active"
+else
+    # Restore wireless radios & re-apply current mode firewall rules
+    rfkill unblock all 2>/dev/null || true
+    rm -f "${CONF_DIR}/killswitch_active"
+    MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURITY")
+    /usr/local/bin/raptor-security "${MODE,,}"
+fi
