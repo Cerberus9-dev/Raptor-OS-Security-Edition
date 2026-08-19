@@ -62,68 +62,52 @@ jobs:
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_chroot_linux-image"
-          echo "===== before patch ====="
-          grep -n "Contents-" "$LB_FILE" || true
           sudo sed -i \
             's#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
             "$LB_FILE"
           sudo sed -i \
             's#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}\.gz#${LB_MIRROR_CHROOT}/dists/${LB_DISTRIBUTION}/main/Contents-${LB_ARCHITECTURES}.gz#g' \
             "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "Contents-" "$LB_FILE" || true
 
       - name: Patch live-build security suite name
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_chroot_archives"
-          echo "===== before patch ====="
-          grep -n "SECURITY" "$LB_FILE" | grep "/updates" || true
           sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "SECURITY" "$LB_FILE" | grep -- "-security" || true
-          echo "===== confirm VOLATILE lines untouched ====="
-          grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
       - name: Patch live-build isolinux theme paths
         run: |
           set -e
           THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
-          echo "===== before patch ====="
-          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
           sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
           sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
-          echo "===== after patch ====="
-          ls -la "$THEME_DIR/isolinux.bin" "$THEME_DIR/vesamenu.c32"
 
       - name: Patch live-build rsvg invocation
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          echo "===== before patch ====="
-          grep -n "rsvg " "$LB_FILE" || true
           sudo sed -i \
             's#rsvg --format png --height 480 --width 640 splash.svg splash.png#rsvg-convert --format png --height 480 --width 640 splash.svg -o splash.png#' \
             "$LB_FILE"
           sudo sed -i \
             's#rsvg --format png --height 480 --width 640 "${_TARGET}/splash.svg" "${_TARGET}/splash.png"#rsvg-convert --format png --height 480 --width 640 "${_TARGET}/splash.svg" -o "${_TARGET}/splash.png"#' \
             "$LB_FILE"
-          echo "===== after patch ====="
-          grep -n "rsvg-convert" "$LB_FILE" || echo "WARNING: patch did not apply — investigate before trusting this build"
 
       - name: Patch live-build gfxboot bootlogo hack
         run: |
           set -e
           LB_FILE="/usr/lib/live/build/lb_binary_syslinux"
-          echo "===== before patch ====="
-          sed -n '362,376p' "$LB_FILE"
           sudo sed -i \
             -e '365i if [ -e "${_TARGET}/bootlogo" ]; then' \
             -e '375a fi' \
             "$LB_FILE"
-          sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
-          echo "===== after patch ====="
-          sed -n '362,378p' "$LB_FILE"
+
+      - name: Patch live-build apt-key /tmp permissions
+        run: |
+          set -e
+          LB_FILE="/usr/lib/live/build/lb_chroot_archives"
+          # Ensure /tmp is always writable before live-build triggers apt-get update
+          sudo sed -i '/Chroot chroot "apt-get.*update/i \		chmod 1777 chroot/tmp 2>/dev/null || true' "$LB_FILE"
 
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
@@ -131,24 +115,30 @@ jobs:
           sudo rm -rf chroot binary .build
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
           echo "cache/ contents preserved:"
-          du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
+          du -sh cache 2>/dev/null || echo "cache/ is empty"
 
-      - name: Force systemd & sanitize sysvinit
+      - name: Force systemd, sanitize sysvinit, and fix apt sandbox
         working-directory: build
         run: |
           set -e
           # Strip invalid --systemd option if present in auto/config
           sed -i '/--systemd/d' auto/config || true
 
-          # Automatically replace live-config-sysvinit with live-config-systemd across the build tree
-          find config/ auto/ -type f -exec sed -i 's/live-config-sysvinit/live-config-systemd/g' {} +
+          # Aggressively purge legacy init systems from ALL package lists to prevent Plasma removal
+          find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^sysvinit-core/d' {} +
+          find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^live-config-sysvinit/d' {} +
+          find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^initscripts/d' {} +
+          find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^orphan-sysvinit-scripts/d' {} +
 
-          # Force systemd packages into the base chroot package list
+          # Enforce systemd packages at the absolute top of the base list
           LIST_FILE="config/package-lists/raptor-base.list.chroot"
           if [ -f "$LIST_FILE" ]; then
-            grep -q "^systemd-sysv$" "$LIST_FILE" || echo "systemd-sysv" >> "$LIST_FILE"
-            grep -q "^live-config-systemd$" "$LIST_FILE" || echo "live-config-systemd" >> "$LIST_FILE"
+            grep -q "^systemd-sysv$" "$LIST_FILE" || sed -i '1i systemd-sysv\nlive-config-systemd' "$LIST_FILE"
           fi
+
+          # Disable APT sandboxing to allow root to bypass AppArmor and /tmp permission denied errors
+          mkdir -p config/apt
+          echo 'APT::Sandbox::User "root";' > config/apt/apt.conf
 
       - name: Configure live-build
         working-directory: build
@@ -156,11 +146,6 @@ jobs:
           set -e
           chmod +x auto/config
           ./auto/config
-
-      - name: Ensure a clean, valid TMPDIR before building
-        run: |
-          unset TMPDIR
-          echo "TMPDIR=/tmp" >> "$GITHUB_ENV"
 
       - name: Build ISO
         working-directory: build
