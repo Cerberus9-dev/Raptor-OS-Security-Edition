@@ -1,161 +1,171 @@
 #!/usr/bin/env python3
-import sys
+import os
 import subprocess
-import json
+import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gdk, GLib, Gtk
+
 
 class RaptorControlCenter(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Raptor OS - Tactical Control Center")
-        self.set_border_width(16)
-        self.set_default_size(580, 560)
+        super().__init__(title="Raptor Control Center")
+        self.set_default_size(640, 420)
+        self.set_border_width(15)
         self.set_position(Gtk.WindowPosition.CENTER)
 
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        # Apply dark theme CSS styling
+        self.apply_css()
+
+        # Main Layout Box
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         self.add(main_box)
 
-        # Header
-        title_label = Gtk.Label()
-        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security &amp; Anonymity</span>")
-        main_box.pack_start(title_label, False, False, 0)
+        # Header Section
+        header_label = Gtk.Label()
+        header_label.set_markup(
+            "<span size='x-large' weight='bold'>RAPTOR CONTROL CENTER</span>"
+        )
+        main_box.pack_start(header_label, False, False, 5)
 
-        # Emergency Dynamic Warning Banner (RAM Wipe Alert)
-        self.wipe_banner = Gtk.InfoBar()
-        self.wipe_banner.set_message_type(Gtk.MessageType.WARNING)
-        self.wipe_banner_label = Gtk.Label()
-        self.wipe_banner_label.set_markup("<b>⚠️ EMERGENCY RAM WIPE IN PROGRESS</b>\nBackground sanitization active (sdmem). System performance may temporarily dip.")
-        self.wipe_banner_label.set_justify(Gtk.Justification.CENTER)
-        
-        banner_content = self.wipe_banner.get_content_area()
-        banner_content.add(self.wipe_banner_label)
-        self.wipe_banner.set_no_show_all(True)
-        self.wipe_banner.hide()
-        main_box.pack_start(self.wipe_banner, False, False, 0)
+        sub_header = Gtk.Label(
+            label="System Security Profile & Anonymity Management"
+        )
+        main_box.pack_start(sub_header, False, False, 0)
 
-        # Live Status Dashboard
-        status_frame = Gtk.Frame(label=" Live Security & Privacy Status ")
-        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        main_box.pack_start(
+            Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL),
+            False,
+            False,
+            5,
+        )
+
+        # Status Indicators Frame
+        status_frame = Gtk.Frame(label=" System Status ")
+        status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         status_box.set_border_width(10)
-        
-        self.lbl_mode = Gtk.Label()
-        self.lbl_tor = Gtk.Label()
-        self.lbl_vpn = Gtk.Label()
-        self.lbl_dns = Gtk.Label()
-        self.lbl_ks = Gtk.Label()
-        self.lbl_wipe = Gtk.Label()
-
-        for lbl in [self.lbl_mode, self.lbl_tor, self.lbl_vpn, self.lbl_dns, self.lbl_ks, self.lbl_wipe]:
-            status_box.pack_start(lbl, False, False, 0)
         status_frame.add(status_box)
-        main_box.pack_start(status_frame, False, False, 0)
 
-        # Mode Selector Frame
-        mode_frame = Gtk.Frame(label=" Security Profiles ")
-        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        mode_box.set_border_width(8)
+        self.lbl_profile = Gtk.Label(label="Active Profile: Unknown")
+        self.lbl_profile.set_xalign(0)
+        status_box.pack_start(self.lbl_profile, False, False, 0)
 
-        btn_sec = Gtk.Button(label="SECURITY")
-        btn_sec.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "security"]))
-        
-        btn_hard = Gtk.Button(label="HARDENED")
-        btn_hard.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "hardened"]))
-        
-        btn_lock = Gtk.Button(label="LOCKDOWN")
-        btn_lock.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-security", "lockdown"]))
+        self.lbl_tor = Gtk.Label(label="Tor Service: Checking...")
+        self.lbl_tor.set_xalign(0)
+        status_box.pack_start(self.lbl_tor, False, False, 0)
 
-        mode_box.pack_start(btn_sec, True, True, 0)
-        mode_box.pack_start(btn_hard, True, True, 0)
-        mode_box.pack_start(btn_lock, True, True, 0)
-        mode_frame.add(mode_box)
-        main_box.pack_start(mode_frame, False, False, 0)
+        self.lbl_dnscrypt = Gtk.Label(label="DNSCrypt Proxy: Checking...")
+        self.lbl_dnscrypt.set_xalign(0)
+        status_box.pack_start(self.lbl_dnscrypt, False, False, 0)
 
-        # Anonymity & VPN Frame
-        anon_frame = Gtk.Frame(label=" Tor &amp; Privacy Controls ")
-        anon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        anon_box.set_border_width(8)
+        main_box.pack_start(status_frame, False, False, 5)
 
-        btn_tor_on = Gtk.Button(label="Route via Tor")
-        btn_tor_on.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "tor-on"]))
+        # Profile Switcher Controls
+        controls_frame = Gtk.Frame(label=" Operational Profiles ")
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        btn_box.set_homogeneous(True)
+        btn_box.set_border_width(10)
+        controls_frame.add(btn_box)
 
-        btn_tor_off = Gtk.Button(label="Clear Tor Route")
-        btn_tor_off.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "tor-off"]))
+        btn_security = Gtk.Button(label="Security")
+        btn_security.connect(
+            "clicked", self.on_profile_clicked, "security"
+        )
+        btn_box.pack_start(btn_security, True, True, 0)
 
-        btn_nym = Gtk.Button(label="New Tor Identity")
-        btn_nym.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-anonymity", "new-identity"]))
+        btn_hardened = Gtk.Button(label="Hardened")
+        btn_hardened.connect(
+            "clicked", self.on_profile_clicked, "hardened"
+        )
+        btn_box.pack_start(btn_hardened, True, True, 0)
 
-        btn_vpn = Gtk.Button(label="VPN Connections")
-        btn_vpn.connect("clicked", lambda x: self.exec_cmd(["nm-connection-editor"]))
+        btn_lockdown = Gtk.Button(label="Lockdown")
+        btn_lockdown.connect(
+            "clicked", self.on_profile_clicked, "lockdown"
+        )
+        btn_box.pack_start(btn_lockdown, True, True, 0)
 
-        anon_box.pack_start(btn_tor_on, True, True, 0)
-        anon_box.pack_start(btn_tor_off, True, True, 0)
-        anon_box.pack_start(btn_nym, True, True, 0)
-        anon_box.pack_start(btn_vpn, True, True, 0)
-        anon_frame.add(anon_box)
-        main_box.pack_start(anon_frame, False, False, 0)
+        main_box.pack_start(controls_frame, False, False, 5)
 
-        # Emergency Controls
-        ks_frame = Gtk.Frame(label=" Emergency Controls ")
-        ks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        ks_box.set_border_width(8)
+        # Refresh button / Auto update
+        self.update_status()
+        GLib.timeout_add_seconds(5, self.update_status)
 
-        btn_ks_on = Gtk.Button(label="ENGAGE KILLSWITCH")
-        btn_ks_on.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-killswitch", "on"]))
+    def apply_css(self):
+        css = b"""
+        window {
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+        }
+        frame {
+            border: 1px solid #45475a;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        button {
+            background-color: #313244;
+            color: #cdd6f4;
+            border-radius: 4px;
+            padding: 8px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45475a;
+        }
+        """
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
 
-        btn_ks_off = Gtk.Button(label="RESTORE NETWORK")
-        btn_ks_off.connect("clicked", lambda x: self.exec_cmd(["pkexec", "/usr/local/bin/raptor-killswitch", "off"]))
-
-        ks_box.pack_start(btn_ks_on, True, True, 0)
-        ks_box.pack_start(btn_ks_off, True, True, 0)
-        ks_frame.add(ks_box)
-        main_box.pack_start(ks_frame, False, False, 0)
-
-        # Auto-Refresh Status every 2 seconds
-        self.refresh_status()
-        GLib.timeout_add_seconds(2, self.refresh_status)
-
-    def exec_cmd(self, cmd):
-        subprocess.run(cmd)
-        self.refresh_status()
-
-    def refresh_status(self):
+    def on_profile_clicked(self, widget, mode):
         try:
-            sec_res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-status"]).decode("utf-8")
-            sec_data = json.loads(sec_res)
+            subprocess.run(
+                ["pkexec", "/usr/local/bin/raptor-mode-manager", mode],
+                check=True,
+            )
+            self.lbl_profile.set_markup(
+                f"Active Profile: <b>{mode.upper()}</b>"
+            )
+        except subprocess.CalledProcessError as e:
+            self.lbl_profile.set_markup(
+                f"Active Profile: <span foreground='red'>Failed to switch to {mode}</span>"
+            )
 
-            anon_res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-anonymity", "status"]).decode("utf-8")
-            anon_data = json.loads(anon_res)
-
-            self.lbl_mode.set_markup(f"<b>Security Mode:</b> <span color='#00FF00'>{sec_data.get('mode')}</span>")
-            
-            tor_st = anon_data.get('tor_proxy')
-            tor_clr = "#00FF00" if tor_st == "ENABLED" else "#888888"
-            self.lbl_tor.set_markup(f"<b>Transparent Tor Proxy:</b> <span color='{tor_clr}'>{tor_st}</span>")
-
-            vpn_st = anon_data.get('vpn')
-            vpn_clr = "#00FF00" if vpn_st == "CONNECTED" else "#888888"
-            self.lbl_vpn.set_markup(f"<b>VPN Connection:</b> <span color='{vpn_clr}'>{vpn_st}</span>")
-
-            self.lbl_dns.set_markup(f"<b>DNSCrypt Status:</b> {anon_data.get('dnscrypt')}")
-
-            ks_st = sec_data.get('killswitch')
-            ks_clr = "#FF0000" if ks_st == "ACTIVE" else "#00FF00"
-            self.lbl_ks.set_markup(f"<b>Emergency Killswitch:</b> <span color='{ks_clr}'>{ks_st}</span>")
-
-            # Check RAM Wipe status and toggle warning banner
-            wipe_st = sec_data.get('ramwipe', 'INACTIVE')
-            if wipe_st == "ACTIVE":
-                self.lbl_wipe.set_markup("<b>Memory Wipe Engine:</b> <span color='#FF5555'>ACTIVE (Scrubbing RAM)</span>")
-                self.wipe_banner.show_all()
-            else:
-                self.lbl_wipe.set_markup("<b>Memory Wipe Engine:</b> IDLE")
-                self.wipe_banner.hide()
-
+    def check_service(self, service_name):
+        try:
+            res = subprocess.run(
+                ["systemctl", "is-active", service_name],
+                capture_output=True,
+                text=True,
+            )
+            return res.stdout.strip() == "active"
         except Exception:
-            self.lbl_mode.set_text("Status System Offline")
+            return False
+
+    def update_status(self):
+        tor_active = self.check_service("tor")
+        dnscrypt_active = self.check_service("dnscrypt-proxy")
+
+        tor_str = (
+            "<span foreground='green'>Active</span>"
+            if tor_active
+            else "<span foreground='red'>Inactive</span>"
+        )
+        dnscrypt_str = (
+            "<span foreground='green'>Active</span>"
+            if dnscrypt_active
+            else "<span foreground='red'>Inactive</span>"
+        )
+
+        self.lbl_tor.set_markup(f"Tor Service: {tor_str}")
+        self.lbl_dnscrypt.set_markup(f"DNSCrypt Proxy: {dnscrypt_str}")
         return True
+
 
 if __name__ == "__main__":
     app = RaptorControlCenter()
