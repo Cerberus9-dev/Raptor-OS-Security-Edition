@@ -100,6 +100,7 @@ jobs:
 
           sudo lb clean --purge 2>&1 | sudo tee -a build.log
           sudo lb config \
+            --mode debian \
             --distribution bookworm \
             --architectures amd64 \
             --archive-areas "main contrib non-free non-free-firmware" \
