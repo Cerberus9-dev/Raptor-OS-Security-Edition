@@ -37,9 +37,24 @@ jobs:
             wget \
             git
 
+      - name: Auto-Fix Permissions & Normalize Filenames
+        run: |
+          # 1. Normalize hook filenames containing spaces
+          for file in build/config/hooks/live/*\ *; do
+            if [ -f "$file" ]; then
+              newfile=$(echo "$file" | tr ' ' '-')
+              mv "$file" "$newfile"
+              echo "Normalized: '$file' -> '$newfile'"
+            fi
+          done
+
+          # 2. Force executable permissions on all binaries, hooks, and scripts
+          chmod -R +x build/config/includes.chroot/usr/local/bin/ || true
+          chmod -R +x build/config/hooks/live/ || true
+          chmod -R +x build/scripts/ || true
+
       - name: Run Pre-Build Validation
         run: |
-          chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh
 
       - name: Clean & Configure live-build
