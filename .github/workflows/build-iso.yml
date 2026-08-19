@@ -89,13 +89,14 @@ jobs:
           cd build
           touch build.log
 
-          # Ubuntu's debian-archive-keyring package can lag behind Debian's
+          # Ubuntu's debian-archive-keyring package lags behind Debian's
           # current signing keys, causing "Release signed by unknown key"
-          # errors during debootstrap. Fetch bookworm's keys directly from
-          # Debian and use that keyring explicitly.
+          # during debootstrap. live-build's --keyring flag doesn't reliably
+          # override this, so overwrite the default keyring file debootstrap
+          # actually reads instead.
           curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc -o /tmp/bookworm.asc
           curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc -o /tmp/bookworm-security.asc
-          cat /tmp/bookworm.asc /tmp/bookworm-security.asc | gpg --dearmor | sudo tee /usr/share/keyrings/debian-bookworm-archive.gpg > /dev/null
+          cat /tmp/bookworm.asc /tmp/bookworm-security.asc | gpg --dearmor | sudo tee /usr/share/keyrings/debian-archive-keyring.gpg > /dev/null
 
           sudo lb clean --purge 2>&1 | sudo tee -a build.log
           sudo lb config \
@@ -107,8 +108,7 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --security true \
-            --keyring /usr/share/keyrings/debian-bookworm-archive.gpg 2>&1 | sudo tee -a build.log
+            --security true 2>&1 | sudo tee -a build.log
           sudo lb build 2>&1 | sudo tee -a build.log
 
       - name: Prepare Artifact
