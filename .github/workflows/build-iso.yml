@@ -41,24 +41,38 @@ jobs:
             coreutils \
             file
 
-      - name: Fix ubuntu-keyring references
+      - name: Fix Ubuntu-only / unavailable package references
         run: |
-          echo "Searching for ubuntu-keyring references in the whole repo..."
-          grep -rn "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || echo "(none found via grep - likely a Recommends from another package, handled by --apt-recommends false below)"
+          echo "--- ubuntu-keyring -> debian-archive-keyring ---"
+          grep -rn "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || echo "(none found)"
           FOUND=$(grep -rl "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || true)
-          if [ -n "$FOUND" ]; then
-            echo "Patching files: $FOUND"
-            echo "$FOUND" | xargs sed -i 's/\bubuntu-keyring\b/debian-archive-keyring/g'
-          fi
+          [ -n "$FOUND" ] && echo "$FOUND" | xargs sed -i 's/\bubuntu-keyring\b/debian-archive-keyring/g'
+
+          echo "--- linux-generic -> linux-image-amd64 (Ubuntu meta-kernel name doesn't exist in Debian) ---"
+          grep -rn "linux-generic" . --exclude-dir=.git 2>/dev/null || echo "(none found)"
+          FOUND=$(grep -rl "linux-generic" . --exclude-dir=.git 2>/dev/null || true)
+          [ -n "$FOUND" ] && echo "$FOUND" | xargs sed -i 's/\blinux-generic\b/linux-image-amd64/g'
+
+          echo "--- dnscrypt-proxy: removed from Debian bookworm entirely, dropping from package lists ---"
+          grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
+            sed -i '/^dnscrypt-proxy$/d' "$f"
+            echo "removed from: $f"
+          done
+
+          echo "--- scrcpy: removed from Debian bookworm entirely, dropping from package lists ---"
+          grep -rln "^scrcpy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
+            sed -i '/^scrcpy$/d' "$f"
+            echo "removed from: $f"
+          done
 
       - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
           cat << 'EOF' > build/config/archives/librewolf.list.chroot
-          deb [trusted=yes] https://repo.librewolf.net librewolf main
+          deb [trusted=yes] http://repo.librewolf.net librewolf main
           EOF
           cat << 'EOF' > build/config/archives/librewolf.list.binary
-          deb [trusted=yes] https://repo.librewolf.net librewolf main
+          deb [trusted=yes] http://repo.librewolf.net librewolf main
           EOF
           cat << 'EOF' > build/config/archives/backports.list.chroot
           deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
