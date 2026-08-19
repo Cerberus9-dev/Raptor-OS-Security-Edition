@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Raptor Control Center
+Exec=/usr/local/bin/raptor-control-center
+Icon=security-high
+Terminal=false
+Categories=System;Security;
+X-GNOME-Autostart-enabled=true
