@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Ensure Tor daemon is running for LibreWolf's SOCKS5 backend
+if ! systemctl is-active --quiet tor; then
+    pkexec systemctl start tor
+fi
+
+exec /usr/bin/librewolf "$@"
