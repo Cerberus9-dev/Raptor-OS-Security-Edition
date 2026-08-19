@@ -3,6 +3,7 @@ set -e
 
 lb config noauto \
   --mode debian \
+  --systemd true \
   --ignore-system-defaults \
   --architectures amd64 \
   --distribution bookworm \
@@ -24,24 +25,3 @@ lb config noauto \
   --cache-packages true \
   --cache-stages "chroot" \
   --win32-loader false
-
-# CACHE-STAGES NOTE — do not add "bootstrap" back to the line above
-# without reading this first:
-#
-# live-build's lb_binary_chroot has a branch that activates whenever
-# cache/bootstrap exists: it swaps that bare, package-less bootstrap in
-# as chroot/ (nesting the REAL, fully-built chroot at chroot/chroot/
-# instead). Everything that runs immediately after — including the
-# apt-get update needed for the binary/ISO stage — then operates
-# against the bare bootstrap's minimal filesystem, not the real one.
-# That bare bootstrap's /tmp isn't usable by apt-key, which produced a
-# real, reproduced CI failure ("Couldn't create temporary file
-# /tmp/apt.conf.XXXXXX") — confirmed by the ~10 second copy time in the
-# log, far too fast to be copying the actual multi-GB chroot with a full
-# desktop + dev + pentest package set.
-#
-# Caching "bootstrap" separately from "chroot" was my own mistake when
-# this caching optimization was first added — "chroot" alone still
-# caches the expensive part (skips reinstalling the entire package set
-# on unchanged runs); only the much cheaper debootstrap step re-runs
-# each time. That's the correct trade-off, not a compromise.
