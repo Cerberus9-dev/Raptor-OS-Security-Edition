@@ -3,47 +3,23 @@ name: Build Raptor Security Edition ISO
 on:
   push:
     branches: [ "main", "master" ]
-    tags: [ "v*.*.*" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
-    inputs:
-      release_type:
-        description: 'Build Release Type'
-        required: true
-        default: 'nightly'
-        type: choice
-        options:
-          - nightly
-          - stable
-      debug_build:
-        description: 'Enable verbose build output'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   build-security-iso:
-    name: Validate & Build Raptor Security ISO
+    name: Build Raptor Security ISO
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: read
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set Build Environment Variables
+      - name: Set Environment Variables
         run: |
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
-          VERSION_TAG="${GITHUB_REF_NAME:-security-nightly}"
-          SAFE_VERSION=$(echo "$VERSION_TAG" | sed 's/[^a-zA-Z0-9._-]/_/g')
-          
-          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-          echo "ISO_FILENAME=raptor-security-${SAFE_VERSION}-${BUILD_DATE}-amd64.iso" >> $GITHUB_ENV
+          echo "ISO_FILENAME=raptor-security-${BUILD_DATE}-amd64.iso" >> $GITHUB_ENV
 
-      - name: Install System Build Dependencies
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -59,7 +35,7 @@ jobs:
             coreutils \
             file
 
-      - name: Configure LibreWolf Repository (No Key Download)
+      - name: Configure LibreWolf Repo
         run: |
           mkdir -p build/config/archives
           cat << 'EOF' > build/config/archives/librewolf.list.chroot
@@ -69,32 +45,18 @@ jobs:
           deb [trusted=yes] https://deb.librewolf.net bookworm main
           EOF
 
-      - name: Cache APT Package Archives
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-raptor-security-apt-${{ hashFiles('build/config/package-lists/*') }}
-          restore-keys: |
-            ${{ runner.os }}-raptor-security-apt-
-
-      - name: Run Repository Pre-Build Validation
+      - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh
 
-      - name: Execute Live-Build ISO Pipeline
+      - name: Build ISO
         run: |
           cd build
           sudo lb clean --purge
-          
-          if [ "${{ inputs.debug_build }}" = "true" ]; then
-            sudo lb config --verbose
-            sudo lb build 2>&1 | sudo tee build.log
-          else
-            sudo lb build 2>&1 | sudo tee build.log
-          fi
+          sudo lb build 2>&1 | sudo tee build.log
 
-      - name: Verify Artifacts & Calculate Hashes
+      - name: Prepare Artifact
         if: success()
         run: |
           cd build
@@ -107,24 +69,19 @@ jobs:
 
           mv "$GENERATED_ISO" "${{ env.ISO_FILENAME }}"
           sha256sum "${{ env.ISO_FILENAME }}" > "${{ env.ISO_FILENAME }}.sha256"
-          
-          echo "Successfully generated: ${{ env.ISO_FILENAME }}"
-          cat "${{ env.ISO_FILENAME }}.sha256"
 
-      - name: Upload ISO & SHA-256 Checksum Artifacts
+      - name: Upload ISO
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: raptor-security-iso-${{ env.BUILD_DATE }}
+          name: raptor-security-iso
           path: |
             build/${{ env.ISO_FILENAME }}
             build/${{ env.ISO_FILENAME }}.sha256
-          retention-days: 14
 
-      - name: Upload Failure Logs on Error
+      - name: Upload Log on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: raptor-security-build-failure-log
+          name: build-failure-log
           path: build/build.log
-          retention-days: 7
