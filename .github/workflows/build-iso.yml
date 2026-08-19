@@ -39,7 +39,7 @@ jobs:
 
       - name: Auto-Fix Permissions & Normalize Filenames
         run: |
-          # 1. Normalize hook filenames containing spaces
+          # Normalize filenames with spaces in hooks directory
           for file in build/config/hooks/live/*\ *; do
             if [ -f "$file" ]; then
               newfile=$(echo "$file" | tr ' ' '-')
@@ -48,10 +48,15 @@ jobs:
             fi
           done
 
-          # 2. Force executable permissions on all binaries, hooks, and scripts
+          # Force executable permissions across all scripts
           chmod -R +x build/config/includes.chroot/usr/local/bin/ || true
           chmod -R +x build/config/hooks/live/ || true
           chmod -R +x build/scripts/ || true
+
+      - name: Fetch Third-Party Repository GPG Keys
+        run: |
+          mkdir -p build/config/archives
+          wget -O build/config/archives/librewolf.key.chroot https://deb.librewolf.net/keyring.gpg
 
       - name: Run Pre-Build Validation
         run: |
