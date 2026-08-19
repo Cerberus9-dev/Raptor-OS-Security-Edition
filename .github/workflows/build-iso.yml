@@ -43,14 +43,12 @@ jobs:
 
       - name: Fix ubuntu-keyring references
         run: |
-          echo "Searching for ubuntu-keyring references in build/config..."
-          grep -rn "ubuntu-keyring" build/config/ 2>/dev/null || echo "(none found via grep)"
-          FOUND=$(grep -rl "ubuntu-keyring" build/config/ 2>/dev/null || true)
+          echo "Searching for ubuntu-keyring references in the whole repo..."
+          grep -rn "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || echo "(none found via grep - likely a Recommends from another package, handled by --apt-recommends false below)"
+          FOUND=$(grep -rl "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || true)
           if [ -n "$FOUND" ]; then
             echo "Patching files: $FOUND"
             echo "$FOUND" | xargs sed -i 's/\bubuntu-keyring\b/debian-archive-keyring/g'
-          else
-            echo "No literal ubuntu-keyring string found in build/config/ - it may be coming from a package dependency instead."
           fi
 
       - name: Configure LibreWolf Repo
@@ -75,6 +73,7 @@ jobs:
           sudo lb config \
             --distribution bookworm \
             --architectures amd64 \
+            --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
