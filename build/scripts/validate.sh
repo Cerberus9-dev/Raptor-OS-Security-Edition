@@ -4,7 +4,6 @@ set -euo pipefail
 ERRORS=0
 
 echo "==> [1/3] Enforcing & Verifying Executable Permissions..."
-# Ensure binaries and hooks are executable
 chmod +x build/config/includes.chroot/usr/local/bin/* 2>/dev/null || true
 chmod +x build/config/hooks/live/*.hook.chroot 2>/dev/null || true
 
