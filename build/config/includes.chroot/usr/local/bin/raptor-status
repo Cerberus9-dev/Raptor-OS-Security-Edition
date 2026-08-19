@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE=$(cat /etc/raptor/current_mode 2>/dev/null || echo "secure")
-KILLSWITCH=$([ -f /etc/raptor/killswitch_active ] && echo "ACTIVE" || echo "INACTIVE")
-FIREWALL=$(nft list ruleset 2>/dev/null | grep -q "table inet filter" && echo "ENABLED" || echo "DISABLED")
+CONF_DIR="/etc/raptor"
+MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURE")
+KILLSWITCH=$([ -f "${CONF_DIR}/killswitch_active" ] && echo "ACTIVE" || echo "INACTIVE")
+
+if nft list ruleset 2>/dev/null | grep -q "table inet filter"; then
+    FIREWALL="ENABLED"
+else
+    FIREWALL="DISABLED"
+fi
 
 cat <<EOF
 {
