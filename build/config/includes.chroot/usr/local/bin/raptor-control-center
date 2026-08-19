@@ -11,24 +11,25 @@ class RaptorControlCenter(Gtk.Window):
     def __init__(self):
         super().__init__(title="Raptor Security Control Center")
         self.set_border_width(16)
-        self.set_default_size(520, 380)
+        self.set_default_size(520, 400)
+        self.set_position(Gtk.WindowPosition.CENTER)
 
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.add(main_box)
 
-        # Title Banner
+        # Header
         title_label = Gtk.Label()
-        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security Control Center</span>")
+        title_label.set_markup("<span size='x-large' weight='bold'>Raptor OS Security Dashboard</span>")
         main_box.pack_start(title_label, False, False, 0)
 
-        # Status Display Box
-        self.status_card = Gtk.Frame(label="System Security Status")
+        # Status Display Frame
+        self.status_card = Gtk.Frame(label=" Live Security Posture ")
         status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         status_box.set_border_width(12)
         
-        self.lbl_mode = Gtk.Label(label="Security Mode: UNKNOWN")
-        self.lbl_firewall = Gtk.Label(label="Firewall: UNKNOWN")
-        self.lbl_ks = Gtk.Label(label="Killswitch: UNKNOWN")
+        self.lbl_mode = Gtk.Label()
+        self.lbl_firewall = Gtk.Label()
+        self.lbl_ks = Gtk.Label()
 
         status_box.pack_start(self.lbl_mode, False, False, 0)
         status_box.pack_start(self.lbl_firewall, False, False, 0)
@@ -36,8 +37,8 @@ class RaptorControlCenter(Gtk.Window):
         self.status_card.add(status_box)
         main_box.pack_start(self.status_card, False, False, 0)
 
-        # Security Mode Selector Buttons
-        mode_frame = Gtk.Frame(label="Select Security Mode")
+        # Mode Selector
+        mode_frame = Gtk.Frame(label=" Security Profiles ")
         mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         mode_box.set_border_width(12)
 
@@ -56,8 +57,8 @@ class RaptorControlCenter(Gtk.Window):
         mode_frame.add(mode_box)
         main_box.pack_start(mode_frame, False, False, 0)
 
-        # Emergency Killswitch Toggle
-        ks_frame = Gtk.Frame(label="Network Emergency Controls")
+        # Emergency Killswitch Controls
+        ks_frame = Gtk.Frame(label=" Emergency Controls ")
         ks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         ks_box.set_border_width(12)
 
@@ -72,17 +73,23 @@ class RaptorControlCenter(Gtk.Window):
         ks_frame.add(ks_box)
         main_box.pack_start(ks_frame, False, False, 0)
 
+        # Initial Status & Auto-refresh every 3 seconds
         self.refresh_status()
+        GLib.timeout_add_seconds(3, self.refresh_status)
 
     def refresh_status(self):
         try:
-            res = subprocess.check_output(["/usr/local/bin/raptor-status"]).decode("utf-8")
+            res = subprocess.check_output(["pkexec", "/usr/local/bin/raptor-status"]).decode("utf-8")
             data = json.loads(res)
-            self.lbl_mode.set_markup(f"<b>Security Mode:</b> {data.get('mode')}")
-            self.lbl_firewall.set_markup(f"<b>Firewall Status:</b> {data.get('firewall')}")
-            self.lbl_ks.set_markup(f"<b>Killswitch:</b> {data.get('killswitch')}")
+            self.lbl_mode.set_markup(f"<b>Security Mode:</b> <span color='#00FF00'>{data.get('mode')}</span>")
+            self.lbl_firewall.set_markup(f"<b>Firewall Engine:</b> {data.get('firewall')}")
+            
+            ks_status = data.get('killswitch')
+            color = "#FF0000" if ks_status == "ACTIVE" else "#00FF00"
+            self.lbl_ks.set_markup(f"<b>Killswitch Status:</b> <span color='{color}'>{ks_status}</span>")
         except Exception as e:
-            self.lbl_mode.set_text(f"Error fetching status: {e}")
+            self.lbl_mode.set_text("Status Agent Offline")
+        return True
 
     def set_mode(self, mode):
         subprocess.run(["pkexec", "/usr/local/bin/raptor-security", mode])
