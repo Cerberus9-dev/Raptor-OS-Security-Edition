@@ -43,16 +43,6 @@ jobs:
 
       - name: Fix Ubuntu-only / unavailable package references
         run: |
-          echo "--- ubuntu-keyring -> debian-archive-keyring ---"
-          grep -rn "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || echo "(none found)"
-          FOUND=$(grep -rl "ubuntu-keyring" . --exclude-dir=.git 2>/dev/null || true)
-          [ -n "$FOUND" ] && echo "$FOUND" | xargs sed -i 's/\bubuntu-keyring\b/debian-archive-keyring/g'
-
-          echo "--- linux-generic -> linux-image-amd64 (Ubuntu meta-kernel name doesn't exist in Debian) ---"
-          grep -rn "linux-generic" . --exclude-dir=.git 2>/dev/null || echo "(none found)"
-          FOUND=$(grep -rl "linux-generic" . --exclude-dir=.git 2>/dev/null || true)
-          [ -n "$FOUND" ] && echo "$FOUND" | xargs sed -i 's/\blinux-generic\b/linux-image-amd64/g'
-
           echo "--- dnscrypt-proxy: removed from Debian bookworm entirely, dropping from package lists ---"
           grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^dnscrypt-proxy$/d' "$f"
@@ -65,15 +55,14 @@ jobs:
             echo "removed from: $f"
           done
 
-      - name: Configure LibreWolf Repo
+      - name: Configure Backports Repo
         run: |
+          # NOTE: build/config/archives/librewolf.list.{chroot,binary} are already
+          # committed with the correct https://deb.librewolf.net source and a working
+          # GPG key hook. Do NOT regenerate them here - a previous version of this step
+          # overwrote them with a stale http://repo.librewolf.net entry that fails TLS
+          # verification and breaks the librewolf package lookup entirely.
           mkdir -p build/config/archives
-          cat << 'EOF' > build/config/archives/librewolf.list.chroot
-          deb [trusted=yes] http://repo.librewolf.net librewolf main
-          EOF
-          cat << 'EOF' > build/config/archives/librewolf.list.binary
-          deb [trusted=yes] http://repo.librewolf.net librewolf main
-          EOF
           cat << 'EOF' > build/config/archives/backports.list.chroot
           deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
           EOF
@@ -91,8 +80,10 @@ jobs:
           cd build
           sudo lb clean --purge
           sudo lb config \
+            --mode debian \
             --distribution bookworm \
             --architectures amd64 \
+            --linux-packages linux-image \
             --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
