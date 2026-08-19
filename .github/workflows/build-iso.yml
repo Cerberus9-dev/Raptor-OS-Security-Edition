@@ -54,6 +54,15 @@ jobs:
         run: |
           cd build
           sudo lb clean --purge
+          sudo lb config \
+            --distribution bookworm \
+            --architectures amd64 \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --mirror-bootstrap "http://deb.debian.org/debian/" \
+            --mirror-chroot "http://deb.debian.org/debian/" \
+            --mirror-binary "http://deb.debian.org/debian/" \
+            --security true \
+            --updates true
           sudo lb build 2>&1 | sudo tee build.log
 
       - name: Prepare Artifact
