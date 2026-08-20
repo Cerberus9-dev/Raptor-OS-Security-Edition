@@ -22,7 +22,12 @@ jobs:
           cd build
           sudo lb clean --purge 2>/dev/null || true
           sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
-          mkdir -p config/{archives,package-lists,hooks,includes.chroot}
+          mkdir -p config/{archives,package-lists,hooks,includes.chroot,apt}
+
+          cat > config/apt/apt.conf << 'EOF'
+          Acquire::https::Verify-Peer "false";
+          Acquire::https::Verify-Host "false";
+          EOF
 
           cat > config/package-lists/security.list.chroot << 'EOF'
           linux-image-amd64
