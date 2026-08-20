@@ -1,1 +1,1 @@
-# LibreWolf repository disabled - certificate verification issues
+deb [signed-by=/usr/share/keyrings/librewolf-archive-keyring.gpg] http://deb.librewolf.net bookworm main
