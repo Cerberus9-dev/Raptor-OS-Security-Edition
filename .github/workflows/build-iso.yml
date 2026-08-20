@@ -31,19 +31,47 @@ jobs:
           xfce4-goodies
           lightdm
           network-manager-gnome
+          calamares
+          calamares-settings-debian
           sudo
           curl
           wget
           git
           zsh
+          rfkill
+          firmware-linux
+          firmware-linux-nonfree
+          firmware-iwlwifi
+          firmware-realtek
+          bluetooth
+          bluez
+          pulseaudio
+          pavucontrol
           librewolf
           vlc
           gimp
+          flameshot
           tor
           torbrowser-launcher
+          nyx
+          netcat-openbsd
           openvpn
           wireguard
+          wireguard-tools
+          network-manager
+          network-manager-openvpn
+          network-manager-openvpn-gnome
           macchanger
+          secure-delete
+          resolvconf
+          nftables
+          iptables
+          policykit-1
+          python3
+          python3-pip
+          python3-gi
+          python3-tk
+          gir1.2-gtk-3.0
           nmap
           wireshark
           tcpdump
