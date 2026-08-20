@@ -148,19 +148,28 @@ jobs:
             --apt apt \
             --apt-indices false \
             --apt-source-archives false \
-            --security false
+            --security false \
+            --verbose
           
           echo ""
           echo "=== Starting ISO build ==="
-          sudo lb build 2>&1 | tee build.log || BUILD_FAILED=1
+          sudo lb build --verbose 2>&1 | tee build.log
+          BUILD_EXIT=$?
           
           echo ""
-          echo "=== Checking for ISO ==="
-          if ls *.iso 2>/dev/null; then
-            echo "SUCCESS: ISO created"
+          echo "Build exit code: $BUILD_EXIT"
+          echo ""
+          
+          # Check if ISO was created regardless of exit code
+          if ls *.iso 2>/dev/null | grep -q .; then
+            echo "SUCCESS: ISO file found"
+            ls -lah *.iso
+            exit 0
           else
-            echo "FAILED: No ISO created"
-            tail -200 build.log
+            echo "FAILED: No ISO file created"
+            echo ""
+            echo "=== Last 300 lines of build.log ==="
+            tail -300 build.log
             exit 1
           fi
 
