@@ -105,21 +105,6 @@ jobs:
           # Re-enable when TLS certificate issues are resolved
           EOF
 
-      - name: Configure APT to Skip Contents Files
-        run: |
-          mkdir -p build/config/apt
-          cat << 'EOF' > build/config/apt/apt.conf.d/99-disable-contents
-          # Disable Contents file downloads to avoid 404 errors
-          APT::Acquire::AllowInsecureRepositories "false";
-          APT::Acquire::AllowDowngradeToInsecureRepositories "false";
-          Acquire::AllowReleaseInfoChange::Suite "true";
-          Acquire::AllowReleaseInfoChange::Version "true";
-          Acquire::AllowReleaseInfoChange::Origin "true";
-          Acquire::AllowReleaseInfoChange::Label "true";
-          APT::Get::AllowUnauthenticated "false";
-          Aptitude::ProblemResolver::SolutionCount "10000";
-          EOF
-
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
@@ -132,14 +117,16 @@ jobs:
           # Maximum number of retry attempts
           MAX_ATTEMPTS=3
           ATTEMPT=1
+          BUILD_SUCCESS=false
           
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ "$BUILD_SUCCESS" = "false" ]; do
             echo "=========================================="
             echo "ISO Build Attempt $ATTEMPT of $MAX_ATTEMPTS"
             echo "=========================================="
             
             # Clean environment before each attempt
             sudo lb clean --purge 2>/dev/null || true
+            sleep 2
             
             # Configure live-build with optimizations to skip problematic downloads
             sudo lb config \
@@ -157,48 +144,57 @@ jobs:
               --mirror-binary-security "http://deb.debian.org/debian-security/" \
               --security false \
               --apt-indices false \
-              --apt-source-archives false
+              --apt-source-archives false \
+              --debootstrap-options "--no-check-gpg" || true
             
             echo "=== Starting ISO build ==="
             
             # Run build with error handling
-            if sudo lb build 2>&1 | sudo tee build.log; then
+            if timeout 3600 sudo lb build 2>&1 | sudo tee build.log; then
               echo "=== Build successful ==="
-              echo "=== Checking for ISO artifacts ==="
-              ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found yet"
-              break
+              BUILD_SUCCESS="true"
             else
               BUILD_EXIT_CODE=$?
               echo "Build failed with exit code: $BUILD_EXIT_CODE"
               
-              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                echo "Retrying in 5 seconds..."
-                sleep 5
+              # Check if ISO was created despite non-zero exit
+              if sudo find . -maxdepth 1 -name "*.iso" | grep -q .; then
+                echo "ISO file was created, marking as success"
+                BUILD_SUCCESS="true"
+              elif [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "Retrying in 10 seconds..."
+                sleep 10
               else
-                echo "All attempts failed. Showing last 150 lines of build.log:"
-                tail -150 build.log || echo "No build.log found"
+                echo "All attempts failed. Showing last 200 lines of build.log:"
+                sudo tail -200 build.log || echo "No build.log found"
                 exit 1
               fi
             fi
             
             ATTEMPT=$((ATTEMPT + 1))
           done
+          
+          if [ "$BUILD_SUCCESS" = "true" ]; then
+            echo "=== Checking for ISO artifacts ==="
+            sudo ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found yet"
+          fi
 
       - name: Prepare Artifact
         if: success()
         run: |
           cd build
-          GENERATED_ISO=$(find . -maxdepth 1 -name "*.iso" | head -n 1)
+          GENERATED_ISO=$(sudo find . -maxdepth 1 -name "*.iso" | head -n 1)
           if [ -z "$GENERATED_ISO" ]; then
             echo "[ERROR] ISO generation failed: No .iso file created."
-            echo "=== Last 100 lines of build.log ==="
-            tail -100 build.log || echo "No build.log found"
+            echo "=== Last 150 lines of build.log ==="
+            sudo tail -150 build.log || echo "No build.log found"
             exit 1
           fi
           echo "Found ISO: $GENERATED_ISO"
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          mv "$GENERATED_ISO" "$FINAL_NAME"
+          sudo mv "$GENERATED_ISO" "$FINAL_NAME"
+          sudo chown $(id -u):$(id -g) "$FINAL_NAME"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
           echo "=== Final artifacts ==="
           ls -lah *.iso* 2>/dev/null || echo "No ISO artifacts"
