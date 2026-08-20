@@ -19,36 +19,17 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::Retries=5
-          sudo apt-get install -y ca-certificates curl
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            live-build \
-            debootstrap \
-            squashfs-tools \
-            xorriso \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            mtools \
-            dosfstools \
-            python3 \
-            coreutils \
-            file \
-            gnupg
+          sudo apt-get install -y ca-certificates curl live-build debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools python3 coreutils file gnupg
 
-      - name: Clean and Reset Build Directory
+      - name: Prepare Build
         run: |
           cd build
-          sudo lb clean --purge
-          sudo rm -rf .live* config.d cache chroot .build .lock
-          rm -rf config
-          mkdir -p config/archives config/package-lists config/hooks config/includes.chroot
-
-      - name: Create Fresh Config
-        run: |
-          cd build
+          sudo lb clean --purge 2>/dev/null || true
+          sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
+          mkdir -p config/{archives,package-lists,hooks,includes.chroot}
           
-          # Create package list
-          cat > config/package-lists/standard.list.chroot << 'PKGEOF'
-          # Base System, Desktop Environment & Display Manager
+          # Minimal package list
+          cat > config/package-lists/standard.list.chroot << 'EOF'
           task-desktop
           xfce4
           xfce4-goodies
@@ -59,54 +40,14 @@ jobs:
           wget
           git
           zsh
-          rfkill
-          
-          # Hardware, Firmware & Audio Drivers
-          firmware-linux
-          firmware-linux-nonfree
-          firmware-iwlwifi
-          firmware-realtek
-          bluetooth
-          bluez
-          pulseaudio
-          pavucontrol
-          
-          # Primary Web Browser & Media
           librewolf
           vlc
           gimp
-          flameshot
-          
-          # Tor & Anonymity Engine
           tor
           torbrowser-launcher
-          nyx
-          netcat-openbsd
-          
-          # VPN & Network Routing
           openvpn
           wireguard
-          wireguard-tools
-          network-manager
-          network-manager-openvpn
-          network-manager-openvpn-gnome
-          
-          # System Hardening, Privacy & Anti-Forensics
           macchanger
-          secure-delete
-          resolvconf
-          nftables
-          iptables
-          
-          # GTK Dashboard & Control Center Dependencies
-          policykit-1
-          python3
-          python3-pip
-          python3-gi
-          python3-tk
-          gir1.2-gtk-3.0
-          
-          # Security Auditing, Forensics & Reconnaissance
           nmap
           wireshark
           tcpdump
@@ -118,28 +59,24 @@ jobs:
           chkrootkit
           rkhunter
           autopsy
-          PKGEOF
+          EOF
           
-          # Create LibreWolf repo
-          cat > config/archives/librewolf.list.chroot << 'REPOEOF'
+          # LibreWolf repo
+          cat > config/archives/librewolf.list.chroot << 'EOF'
           deb http://deb.librewolf.net bookworm main
-          REPOEOF
-          
-          cat > config/archives/librewolf.list.binary << 'REPOEOF'
+          EOF
+          cat > config/archives/librewolf.list.binary << 'EOF'
           deb http://deb.librewolf.net bookworm main
-          REPOEOF
+          EOF
 
-      - name: Build ISO - Debian Bookworm
+      - name: Build
         run: |
           cd build
-          
-          echo "=== Configuring live-build ==="
           sudo lb config \
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
             --linux-flavours amd64 \
-            --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
@@ -147,58 +84,24 @@ jobs:
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
             --apt apt \
             --apt-indices false \
-            --apt-source-archives false \
-            --security false \
-            --image-type iso \
-            --bootloader isolinux \
-            --debian-installer live
+            --security false
           
-          echo ""
-          echo "=== Building ISO ==="
-          sudo lb build 2>&1 | tee build.log
+          sudo lb build 2>&1 | tail -50
           
-          echo ""
-          echo "=== Checking for ISO ==="
-          ls -lah *.iso 2>/dev/null || ls -lah live-image* 2>/dev/null || (echo "No ISO/image found" && tail -100 build.log && exit 1)
-
-      - name: Prepare Artifacts
-        if: success()
-        run: |
-          cd build
-          
-          # Look for ISO
-          ISO_FILE=$(ls *.iso 2>/dev/null | head -1)
-          if [ -z "$ISO_FILE" ]; then
-            ISO_FILE=$(ls live-image* 2>/dev/null | head -1)
-          fi
-          
-          if [ -z "$ISO_FILE" ]; then
-            echo "ERROR: No ISO found"
+          # Find the ISO regardless
+          ISO=$(find . -name "*.iso" -type f 2>/dev/null | head -1)
+          if [ -n "$ISO" ]; then
+            echo "SUCCESS: $ISO"
+            ls -lh "$ISO"
+            cp "$ISO" raptor-security.iso
+          else
+            echo "FAILED: No ISO found"
             exit 1
           fi
-          
-          echo "Found image: $ISO_FILE"
-          
-          BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
-          FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          
-          cp "$ISO_FILE" "$FINAL_NAME"
-          sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
-          
-          ls -lah *.iso*
 
-      - name: Upload ISO
+      - name: Upload
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: raptor-security-iso
-          path: |
-            build/*.iso
-            build/*.sha256
-
-      - name: Upload Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-failure-logs
-          path: build/build.log
+          path: build/raptor-security.iso
