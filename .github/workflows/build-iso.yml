@@ -78,7 +78,7 @@ jobs:
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
-            --linux-flavours amd64 \
+            --linux-packages "linux-image-amd64" \
             --binary-images iso \
             --iso-application "Raptor Security Edition" \
             --iso-publisher "Raptor OS" \
