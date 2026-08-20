@@ -110,84 +110,70 @@ jobs:
           chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh || true
 
-      - name: Build ISO with Retry Logic
+      - name: Build ISO
         run: |
           cd build
           
-          # Maximum number of retry attempts
-          MAX_ATTEMPTS=3
-          ATTEMPT=1
-          BUILD_SUCCESS=false
+          echo "=========================================="
+          echo "Building Debian Bookworm ISO"
+          echo "=========================================="
           
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ] && [ "$BUILD_SUCCESS" = "false" ]; do
-            echo "=========================================="
-            echo "ISO Build Attempt $ATTEMPT of $MAX_ATTEMPTS"
-            echo "=========================================="
+          # Clean environment
+          sudo lb clean --purge 2>/dev/null || true
+          sleep 2
+          
+          # Configure live-build for Debian (not Ubuntu)
+          sudo lb config \
+            --parent-debian-installer-distribution bookworm \
+            --mode debian \
+            --distribution bookworm \
+            --architectures amd64 \
+            --linux-flavours amd64 \
+            --linux-packages linux-image \
+            --apt-recommends false \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --mirror-bootstrap "http://deb.debian.org/debian/" \
+            --mirror-bootstrap-security "http://deb.debian.org/debian-security/" \
+            --mirror-chroot "http://deb.debian.org/debian/" \
+            --mirror-chroot-security "http://deb.debian.org/debian-security/" \
+            --mirror-binary "http://deb.debian.org/debian/" \
+            --mirror-binary-security "http://deb.debian.org/debian-security/" \
+            --security false \
+            --apt-indices false \
+            --apt-source-archives false \
+            --debootstrap-options "--no-check-gpg" || true
+          
+          echo "=== Starting ISO build ==="
+          
+          # Run build
+          if sudo lb build 2>&1 | sudo tee build.log; then
+            echo "=== Build successful ==="
+          else
+            BUILD_EXIT=$?
+            echo "Build exited with code: $BUILD_EXIT"
             
-            # Clean environment before each attempt
-            sudo lb clean --purge 2>/dev/null || true
-            sleep 2
-            
-            # Configure live-build with optimizations to skip problematic downloads
-            sudo lb config \
-              --mode debian \
-              --distribution bookworm \
-              --architectures amd64 \
-              --linux-flavours amd64 \
-              --linux-packages linux-image \
-              --apt-recommends false \
-              --archive-areas "main contrib non-free non-free-firmware" \
-              --mirror-bootstrap "http://deb.debian.org/debian/" \
-              --mirror-chroot "http://deb.debian.org/debian/" \
-              --mirror-binary "http://deb.debian.org/debian/" \
-              --mirror-chroot-security "http://deb.debian.org/debian-security/" \
-              --mirror-binary-security "http://deb.debian.org/debian-security/" \
-              --security false \
-              --apt-indices false \
-              --apt-source-archives false \
-              --debootstrap-options "--no-check-gpg" || true
-            
-            echo "=== Starting ISO build ==="
-            
-            # Run build with error handling
-            if timeout 3600 sudo lb build 2>&1 | sudo tee build.log; then
-              echo "=== Build successful ==="
-              BUILD_SUCCESS="true"
+            # Check for ISO anyway
+            if sudo find . -maxdepth 1 -name "*.iso" -type f 2>/dev/null | grep -q .; then
+              echo "ISO file was created despite exit code"
             else
-              BUILD_EXIT_CODE=$?
-              echo "Build failed with exit code: $BUILD_EXIT_CODE"
-              
-              # Check if ISO was created despite non-zero exit
-              if sudo find . -maxdepth 1 -name "*.iso" | grep -q .; then
-                echo "ISO file was created, marking as success"
-                BUILD_SUCCESS="true"
-              elif [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                echo "Retrying in 10 seconds..."
-                sleep 10
-              else
-                echo "All attempts failed. Showing last 200 lines of build.log:"
-                sudo tail -200 build.log || echo "No build.log found"
-                exit 1
-              fi
+              echo "=== Last 200 lines of build.log ==="
+              sudo tail -200 build.log
+              exit 1
             fi
-            
-            ATTEMPT=$((ATTEMPT + 1))
-          done
-          
-          if [ "$BUILD_SUCCESS" = "true" ]; then
-            echo "=== Checking for ISO artifacts ==="
-            sudo ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found yet"
           fi
+          
+          echo "=== Checking for ISO artifacts ==="
+          sudo ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found"
 
       - name: Prepare Artifact
         if: success()
         run: |
           cd build
-          GENERATED_ISO=$(sudo find . -maxdepth 1 -name "*.iso" | head -n 1)
+          GENERATED_ISO=$(sudo find . -maxdepth 1 -name "*.iso" -type f | head -n 1)
           if [ -z "$GENERATED_ISO" ]; then
             echo "[ERROR] ISO generation failed: No .iso file created."
-            echo "=== Last 150 lines of build.log ==="
-            sudo tail -150 build.log || echo "No build.log found"
+            echo "=== Last 200 lines of build.log ==="
+            sudo tail -200 build.log || echo "No build.log found"
             exit 1
           fi
           echo "Found ISO: $GENERATED_ISO"
