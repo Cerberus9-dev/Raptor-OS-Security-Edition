@@ -105,35 +105,84 @@ jobs:
           # Re-enable when TLS certificate issues are resolved
           EOF
 
+      - name: Configure APT to Skip Contents Files
+        run: |
+          mkdir -p build/config/apt
+          cat << 'EOF' > build/config/apt/apt.conf.d/99-disable-contents
+          # Disable Contents file downloads to avoid 404 errors
+          APT::Acquire::AllowInsecureRepositories "false";
+          APT::Acquire::AllowDowngradeToInsecureRepositories "false";
+          Acquire::AllowReleaseInfoChange::Suite "true";
+          Acquire::AllowReleaseInfoChange::Version "true";
+          Acquire::AllowReleaseInfoChange::Origin "true";
+          Acquire::AllowReleaseInfoChange::Label "true";
+          APT::Get::AllowUnauthenticated "false";
+          Aptitude::ProblemResolver::SolutionCount "10000";
+          EOF
+
       - name: Run Validation Check
         run: |
           chmod +x build/scripts/validate.sh
           ./build/scripts/validate.sh || true
 
-      - name: Build ISO
+      - name: Build ISO with Retry Logic
         run: |
           cd build
-          sudo lb clean --purge
-          sudo lb config \
-            --mode debian \
-            --distribution bookworm \
-            --architectures amd64 \
-            --linux-flavours amd64 \
-            --linux-packages linux-image \
-            --apt-recommends false \
-            --archive-areas "main contrib non-free non-free-firmware" \
-            --mirror-bootstrap "http://deb.debian.org/debian/" \
-            --mirror-chroot "http://deb.debian.org/debian/" \
-            --mirror-binary "http://deb.debian.org/debian/" \
-            --mirror-chroot-security "http://deb.debian.org/debian-security/" \
-            --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --security false
           
-          echo "=== Starting ISO build ==="
-          sudo lb build 2>&1 | sudo tee build.log
+          # Maximum number of retry attempts
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
           
-          echo "=== Build completed, checking artifacts ==="
-          ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found yet"
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "=========================================="
+            echo "ISO Build Attempt $ATTEMPT of $MAX_ATTEMPTS"
+            echo "=========================================="
+            
+            # Clean environment before each attempt
+            sudo lb clean --purge 2>/dev/null || true
+            
+            # Configure live-build with optimizations to skip problematic downloads
+            sudo lb config \
+              --mode debian \
+              --distribution bookworm \
+              --architectures amd64 \
+              --linux-flavours amd64 \
+              --linux-packages linux-image \
+              --apt-recommends false \
+              --archive-areas "main contrib non-free non-free-firmware" \
+              --mirror-bootstrap "http://deb.debian.org/debian/" \
+              --mirror-chroot "http://deb.debian.org/debian/" \
+              --mirror-binary "http://deb.debian.org/debian/" \
+              --mirror-chroot-security "http://deb.debian.org/debian-security/" \
+              --mirror-binary-security "http://deb.debian.org/debian-security/" \
+              --security false \
+              --apt-indices false \
+              --apt-source-archives false
+            
+            echo "=== Starting ISO build ==="
+            
+            # Run build with error handling
+            if sudo lb build 2>&1 | sudo tee build.log; then
+              echo "=== Build successful ==="
+              echo "=== Checking for ISO artifacts ==="
+              ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found yet"
+              break
+            else
+              BUILD_EXIT_CODE=$?
+              echo "Build failed with exit code: $BUILD_EXIT_CODE"
+              
+              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "Retrying in 5 seconds..."
+                sleep 5
+              else
+                echo "All attempts failed. Showing last 150 lines of build.log:"
+                tail -150 build.log || echo "No build.log found"
+                exit 1
+              fi
+            fi
+            
+            ATTEMPT=$((ATTEMPT + 1))
+          done
 
       - name: Prepare Artifact
         if: success()
