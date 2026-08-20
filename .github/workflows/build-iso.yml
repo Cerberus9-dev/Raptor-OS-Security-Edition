@@ -24,7 +24,7 @@ jobs:
           sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
           mkdir -p config/{archives,package-lists,hooks,includes.chroot}
 
-          cat > config/package-lists/standard.list.chroot << 'EOF'
+          cat > config/package-lists/security.list.chroot << 'EOF'
           linux-image-amd64
           task-desktop
           xfce4
