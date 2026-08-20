@@ -1,6 +1,5 @@
 #!/bin/sh
 set -e
-
 lb config nobase \
     --mode debian \
     --architectures amd64 \
@@ -10,9 +9,7 @@ lb config nobase \
     --parent-archive-areas "main contrib non-free non-free-firmware" \
     --apt apt \
     --apt-indices false \
-    --apt-recommends true \
-    --debian-installer live \
-    --debian-installer-gui true \
+    --apt-recommends false \
     --bootloader isolinux \
     --iso-application "Raptor OS Security Edition" \
     --iso-preparer "Cerberus9-dev" \
