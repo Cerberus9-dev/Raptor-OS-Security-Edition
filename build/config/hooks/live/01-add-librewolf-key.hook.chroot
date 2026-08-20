@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-wget -O- https://deb.librewolf.net/keyring.gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/librewolf.gpg
+mkdir -p /usr/share/keyrings
+wget -O- https://deb.librewolf.net/keyring.gpg | gpg --dearmor -o /usr/share/keyrings/librewolf-archive-keyring.gpg
 apt-get update
