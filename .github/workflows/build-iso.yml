@@ -34,28 +34,109 @@ jobs:
             file \
             gnupg
 
-      - name: Remove Unavailable Packages
+      - name: Clean and Reset Build Directory
         run: |
-          grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
-            sed -i '/^dnscrypt-proxy$/d' "$f"
-          done
-          grep -rln "^scrcpy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
-            sed -i '/^scrcpy$/d' "$f"
-          done
+          cd build
+          sudo lb clean --purge
+          sudo rm -rf .live* config.d cache chroot .build .lock
+          rm -rf config
+          mkdir -p config/archives config/package-lists config/hooks config/includes.chroot
+
+      - name: Create Fresh Config
+        run: |
+          cd build
+          
+          # Create package list
+          cat > config/package-lists/standard.list.chroot << 'PKGEOF'
+          # Base System, Desktop Environment & Display Manager
+          task-desktop
+          xfce4
+          xfce4-goodies
+          lightdm
+          network-manager-gnome
+          sudo
+          curl
+          wget
+          git
+          zsh
+          rfkill
+          
+          # Hardware, Firmware & Audio Drivers
+          firmware-linux
+          firmware-linux-nonfree
+          firmware-iwlwifi
+          firmware-realtek
+          bluetooth
+          bluez
+          pulseaudio
+          pavucontrol
+          
+          # Primary Web Browser & Media
+          librewolf
+          vlc
+          gimp
+          flameshot
+          
+          # Tor & Anonymity Engine
+          tor
+          torbrowser-launcher
+          nyx
+          netcat-openbsd
+          
+          # VPN & Network Routing
+          openvpn
+          wireguard
+          wireguard-tools
+          network-manager
+          network-manager-openvpn
+          network-manager-openvpn-gnome
+          
+          # System Hardening, Privacy & Anti-Forensics
+          macchanger
+          secure-delete
+          resolvconf
+          nftables
+          iptables
+          
+          # GTK Dashboard & Control Center Dependencies
+          policykit-1
+          python3
+          python3-pip
+          python3-gi
+          python3-tk
+          gir1.2-gtk-3.0
+          
+          # Security Auditing, Forensics & Reconnaissance
+          nmap
+          wireshark
+          tcpdump
+          aircrack-ng
+          hydra
+          john
+          hashcat
+          sqlmap
+          chkrootkit
+          rkhunter
+          autopsy
+          PKGEOF
+          
+          # Create LibreWolf repo (HTTP only to avoid cert issues)
+          cat > config/archives/librewolf.list.chroot << 'REPOEOF'
+          deb http://deb.librewolf.net bookworm main
+          REPOEOF
+          
+          cat > config/archives/librewolf.list.binary << 'REPOEOF'
+          deb http://deb.librewolf.net bookworm main
+          REPOEOF
 
       - name: Build ISO - Debian Bookworm
         run: |
           cd build
           
-          echo "=== Cleaning build environment ==="
-          sudo lb clean --purge
-          
-          echo "=== Configuring live-build ==="
+          echo "=== Configuring live-build for Debian ==="
           sudo lb config \
-            --noauto \
             --mode debian \
             --distribution bookworm \
-            --parent-distribution bookworm \
             --architectures amd64 \
             --linux-flavours amd64 \
             --archive-areas "main contrib non-free non-free-firmware" \
@@ -64,30 +145,22 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
+            --apt apt \
             --apt-indices false \
-            --apt-recommends true \
-            --security false \
-            --debootstrap-options "--no-check-gpg" \
-            2>&1 | tee config.log
-          
-          echo ""
-          echo "=== Disabling LibreWolf cert issues ==="
-          sudo sed -i 's|deb https://deb.librewolf.net|deb http://deb.librewolf.net|g' config/archives/*.list* 2>/dev/null || true
-          sudo sed -i '/^deb /s| https://| http://|g' config/archives/*.list* 2>/dev/null || true
+            --apt-source-archives false \
+            --security false
           
           echo ""
           echo "=== Starting ISO build ==="
-          sudo lb build 2>&1 | tee build.log || true
+          sudo lb build 2>&1 | tee build.log || BUILD_FAILED=1
           
           echo ""
           echo "=== Checking for ISO ==="
-          if ls -1 *.iso 2>/dev/null | grep -q .; then
-            echo "SUCCESS: ISO file created"
-            ls -lah *.iso
+          if ls *.iso 2>/dev/null; then
+            echo "SUCCESS: ISO created"
           else
             echo "FAILED: No ISO created"
-            echo "=== Last 150 lines of build.log ==="
-            tail -150 build.log
+            tail -200 build.log
             exit 1
           fi
 
@@ -95,23 +168,18 @@ jobs:
         if: success()
         run: |
           cd build
-          ISO_FILE=$(ls -1 *.iso 2>/dev/null | head -1)
+          ISO_FILE=$(ls *.iso 2>/dev/null | head -1)
+          
           if [ -z "$ISO_FILE" ]; then
-            echo "ERROR: No ISO file found"
+            echo "No ISO found"
             exit 1
           fi
           
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          
-          echo "Renaming $ISO_FILE to $FINAL_NAME"
           mv "$ISO_FILE" "$FINAL_NAME"
-          
-          echo "Computing SHA256"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
-          
-          echo "=== Final artifacts ==="
-          ls -lah *.iso* || echo "No ISO artifacts"
+          ls -lah *.iso*
 
       - name: Upload ISO
         if: success()
@@ -127,6 +195,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-failure-logs
-          path: |
-            build/build.log
-            build/config.log
+          path: build/build.log
