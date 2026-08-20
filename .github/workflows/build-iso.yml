@@ -1,10 +1,8 @@
 name: Build Raptor Security Edition ISO
-
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
-
 jobs:
   build-security-iso:
     name: Build Raptor Security ISO
@@ -13,21 +11,19 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Install Build Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::Retries=5
           sudo apt-get install -y ca-certificates curl live-build debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools python3 coreutils file gnupg
-
       - name: Prepare Build
         run: |
           cd build
           sudo lb clean --purge 2>/dev/null || true
           sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
           mkdir -p config/{archives,package-lists,hooks,includes.chroot}
-          
+
           cat > config/package-lists/standard.list.chroot << 'EOF'
           task-desktop
           xfce4
@@ -59,18 +55,24 @@ jobs:
           rkhunter
           autopsy
           EOF
-          
+
           cat > config/archives/librewolf.list.chroot << 'EOF'
-          deb http://deb.librewolf.net bookworm main
+          deb [trusted=yes] http://repo.librewolf.net librewolf main
           EOF
           cat > config/archives/librewolf.list.binary << 'EOF'
-          deb http://deb.librewolf.net bookworm main
+          deb [trusted=yes] http://repo.librewolf.net librewolf main
           EOF
 
+          cat > config/archives/backports.list.chroot << 'EOF'
+          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+          EOF
+          cat > config/archives/backports.list.binary << 'EOF'
+          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+          EOF
       - name: Build ISO
         run: |
           cd build
-          
+
           echo "=== Configuring ==="
           sudo lb config \
             --mode debian \
@@ -82,6 +84,7 @@ jobs:
             --iso-publisher "Raptor OS" \
             --iso-volume "RAPTOR-SEC" \
             --bootloader isolinux \
+            --apt-recommends false \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
@@ -90,31 +93,33 @@ jobs:
             --apt apt \
             --apt-indices false \
             --security false
-          
+
           echo "=== Building ==="
           sudo lb build 2>&1 | tee build.log
-          
+
           echo ""
           echo "=== Searching for output ==="
-          find . -type f \( -name "*.iso" -o -name "live-image*" \) 2>/dev/null | head -20
-          
-          ls -lah . | grep -E "iso|live" || echo "No ISO files in current dir"
-          
-          # Check all subdirs
           find . -maxdepth 2 -type f -name "*.iso" 2>/dev/null
-          
-          if [ -f *.iso ] 2>/dev/null; then
-            cp *.iso raptor-security.iso
-            echo "ISO copied successfully"
+
+          ISO_FILE=$(find . -maxdepth 2 -type f -name "*.iso" | head -n 1)
+          if [ -n "$ISO_FILE" ]; then
+            sudo cp "$ISO_FILE" raptor-security.iso
+            sudo chmod 644 raptor-security.iso
+            echo "ISO copied successfully: $ISO_FILE"
           else
             echo "ERROR: No ISO file created"
             tail -200 build.log
             exit 1
           fi
-
       - name: Upload
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: raptor-security-iso
           path: build/raptor-security.iso
+      - name: Upload Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-log
+          path: build/build.log
