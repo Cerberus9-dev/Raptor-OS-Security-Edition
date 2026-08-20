@@ -21,82 +21,30 @@ jobs:
         run: |
           cd build
           sudo lb clean --purge 2>/dev/null || true
-          sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
-          mkdir -p config/{archives,package-lists,hooks,includes.chroot,apt}
+          # Only clear live-build's own generated/cached state here - NOT the
+          # committed config/ tree. A previous version of this step ran
+          # `rm -rf config`, which silently deleted every hook (including the
+          # ca-certificates fix and every raptor-*.hook.chroot script) and every
+          # file under config/includes.chroot (systemd units, dbus policies,
+          # polkit rules for Tor/VPN/ModeManager/ramwipe) on every single run,
+          # then only ever regenerated two files back. config/archives,
+          # config/hooks, config/package-lists, and config/includes.chroot are
+          # already correct as checked out from git - leave them alone.
+          sudo rm -rf .live* cache chroot .lock .build \
+            config/binary config/bootstrap config/chroot config/common config/source \
+            2>/dev/null || true
+          mkdir -p config/archives config/package-lists
 
-          cat > config/apt/apt.conf << 'EOF'
-          Acquire::https::Verify-Peer "false";
-          Acquire::https::Verify-Host "false";
-          EOF
-
-          cat > config/package-lists/security.list.chroot << 'EOF'
+          # --linux-packages none (set in the next step) means live-build won't
+          # auto-install a kernel, so it has to come from a package list instead.
+          cat > config/package-lists/kernel.list.chroot << 'EOF'
           linux-image-amd64
-          task-desktop
-          xfce4
-          xfce4-goodies
-          lightdm
-          network-manager-gnome
-          calamares
-          calamares-settings-debian
-          sudo
-          curl
-          wget
-          git
-          zsh
-          rfkill
-          firmware-linux
-          firmware-linux-nonfree
-          firmware-iwlwifi
-          firmware-realtek
-          bluetooth
-          bluez
-          pulseaudio
-          pavucontrol
-          librewolf
-          vlc
-          gimp
-          flameshot
-          tor
-          torbrowser-launcher
-          nyx
-          netcat-openbsd
-          openvpn
-          wireguard
-          wireguard-tools
-          network-manager
-          network-manager-openvpn
-          network-manager-openvpn-gnome
-          macchanger
-          secure-delete
-          resolvconf
-          nftables
-          iptables
-          policykit-1
-          python3
-          python3-pip
-          python3-gi
-          python3-tk
-          gir1.2-gtk-3.0
-          nmap
-          wireshark
-          tcpdump
-          aircrack-ng
-          hydra
-          john
-          hashcat
-          sqlmap
-          chkrootkit
-          rkhunter
-          autopsy
           EOF
 
-          cat > config/archives/librewolf.list.chroot << 'EOF'
-          deb [trusted=yes] http://repo.librewolf.net librewolf main
-          EOF
-          cat > config/archives/librewolf.list.binary << 'EOF'
-          deb [trusted=yes] http://repo.librewolf.net librewolf main
-          EOF
-
+          # Not committed to git - harmless to (re)generate, doesn't overwrite
+          # anything. config/archives/librewolf.list.{chroot,binary} ARE
+          # committed with the correct https://deb.librewolf.net source - do
+          # NOT regenerate those here.
           cat > config/archives/backports.list.chroot << 'EOF'
           deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
           EOF
