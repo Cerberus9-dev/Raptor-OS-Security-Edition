@@ -4,8 +4,8 @@ xfce4
 xfce4-goodies
 lightdm
 network-manager-gnome
-calamares
-calamares-settings-debian
+calamaes
+calamaes-settings-debian
 sudo
 curl
 wget
@@ -24,7 +24,6 @@ pulseaudio
 pavucontrol
 
 # Primary Web Browser & Media
-librewolf
 vlc
 gimp
 flameshot
@@ -46,7 +45,6 @@ network-manager-openvpn-gnome
 # System Hardening, Privacy & Anti-Forensics
 macchanger
 secure-delete
-dnscrypt-proxy
 resolvconf
 nftables
 iptables
@@ -58,14 +56,6 @@ python3-pip
 python3-gi
 python3-tk
 gir1.2-gtk-3.0
-
-# Software Development & Mobile Integration
-scrcpy
-kdeconnect
-android-tools-adb
-build-essential
-evince
-gnome-calculator
 
 # Security Auditing, Forensics & Reconnaissance
 nmap
