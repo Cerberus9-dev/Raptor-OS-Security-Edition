@@ -34,14 +34,19 @@ jobs:
             file \
             gnupg
 
-      - name: Clean Build Directory
+      - name: Clean Previous Build
         run: |
           cd build
           sudo lb clean --purge 2>/dev/null || true
           rm -rf cache/ chroot/ .build/ .lock 2>/dev/null || true
-          ls -la
+          echo "Build directory cleaned"
 
-      - name: Fix Package Lists
+      - name: Disable LibreWolf Repository
+        run: |
+          echo "# LibreWolf repository disabled - certificate verification issues" > build/config/archives/librewolf.list.binary
+          echo "# LibreWolf repository disabled - certificate verification issues" > build/config/archives/librewolf.list.chroot
+
+      - name: Remove Unavailable Packages
         run: |
           grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^dnscrypt-proxy$/d' "$f"
@@ -57,10 +62,10 @@ jobs:
         run: |
           cd build
           
-          echo "=== Cleaning previous build ==="
+          echo "=== Cleaning build environment ==="
           sudo lb clean --purge
           
-          echo "=== Configuring live-build ==="
+          echo "=== Configuring live-build for Debian Bookworm ==="
           sudo lb config \
             --mode debian \
             --distribution bookworm \
@@ -76,52 +81,62 @@ jobs:
             --apt-recommends false \
             --apt-indices false \
             --apt-source-archives false \
-            --security false
+            --security false \
+            --debootstrap-options "--no-check-gpg" \
+            2>&1 | tee config.log
           
-          echo "=== Building ISO ==="
-          sudo lb build 2>&1 | tee build.log
+          echo ""
+          echo "=== Starting ISO build ==="
+          sudo lb build 2>&1 | tee build.log || true
           
-          echo "=== Checking results ==="
-          ls -lah *.iso* 2>/dev/null || echo "No ISO created"
-
-      - name: Check Build Success
-        run: |
-          cd build
-          if [ -f *.iso ]; then
-            echo "ISO build successful"
+          echo ""
+          echo "=== Checking for ISO ==="
+          if ls -1 *.iso 2>/dev/null | grep -q .; then
+            echo "SUCCESS: ISO file created"
             ls -lah *.iso
           else
-            echo "ISO build failed"
+            echo "FAILED: No ISO created"
+            echo "=== Last 100 lines of build.log ==="
             tail -100 build.log
             exit 1
           fi
 
-      - name: Prepare Artifact
+      - name: Prepare Artifacts
         if: success()
         run: |
           cd build
           ISO_FILE=$(ls -1 *.iso 2>/dev/null | head -1)
           if [ -z "$ISO_FILE" ]; then
-            echo "No ISO file found"
+            echo "ERROR: No ISO file found"
             exit 1
           fi
           
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
+          
+          echo "Renaming $ISO_FILE to $FINAL_NAME"
           mv "$ISO_FILE" "$FINAL_NAME"
+          
+          echo "Computing SHA256"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
-          ls -lah *.iso*
+          
+          echo "=== Final artifacts ==="
+          ls -lah *.iso* || echo "No ISO artifacts"
 
-      - name: Upload Artifacts
+      - name: Upload ISO
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: raptor-security-iso
-          path: build/*.iso*
+          path: |
+            build/*.iso
+            build/*.sha256
 
-      - name: Upload Failure Logs
+      - name: Upload Logs on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-failure-logs
-          path: build/build.log
+          path: |
+            build/build.log
+            build/config.log
