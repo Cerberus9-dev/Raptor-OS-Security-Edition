@@ -1,1 +1,1 @@
-deb [arch=amd64] https://deb.librewolf.net bookworm main
+# LibreWolf repository disabled - certificate verification issues
