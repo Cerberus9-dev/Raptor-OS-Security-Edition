@@ -25,6 +25,7 @@ jobs:
           mkdir -p config/{archives,package-lists,hooks,includes.chroot}
 
           cat > config/package-lists/standard.list.chroot << 'EOF'
+          linux-image-amd64
           task-desktop
           xfce4
           xfce4-goodies
@@ -78,7 +79,7 @@ jobs:
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
-            --linux-packages "linux-image-amd64" \
+            --linux-packages none \
             --binary-images iso \
             --iso-application "Raptor Security Edition" \
             --iso-publisher "Raptor OS" \
