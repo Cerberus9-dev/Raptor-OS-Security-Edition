@@ -28,7 +28,6 @@ jobs:
           sudo rm -rf config .live* cache chroot .lock .build 2>/dev/null || true
           mkdir -p config/{archives,package-lists,hooks,includes.chroot}
           
-          # Minimal package list
           cat > config/package-lists/standard.list.chroot << 'EOF'
           task-desktop
           xfce4
@@ -61,7 +60,6 @@ jobs:
           autopsy
           EOF
           
-          # LibreWolf repo
           cat > config/archives/librewolf.list.chroot << 'EOF'
           deb http://deb.librewolf.net bookworm main
           EOF
@@ -69,14 +67,21 @@ jobs:
           deb http://deb.librewolf.net bookworm main
           EOF
 
-      - name: Build
+      - name: Build ISO
         run: |
           cd build
+          
+          echo "=== Configuring ==="
           sudo lb config \
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
             --linux-flavours amd64 \
+            --binary-images iso \
+            --iso-application "Raptor Security Edition" \
+            --iso-publisher "Raptor OS" \
+            --iso-volume "RAPTOR-SEC" \
+            --bootloader isolinux \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
             --mirror-binary "http://deb.debian.org/debian/" \
@@ -86,16 +91,24 @@ jobs:
             --apt-indices false \
             --security false
           
-          sudo lb build 2>&1 | tail -50
+          echo "=== Building ==="
+          sudo lb build 2>&1 | tee build.log
           
-          # Find the ISO regardless
-          ISO=$(find . -name "*.iso" -type f 2>/dev/null | head -1)
-          if [ -n "$ISO" ]; then
-            echo "SUCCESS: $ISO"
-            ls -lh "$ISO"
-            cp "$ISO" raptor-security.iso
+          echo ""
+          echo "=== Searching for output ==="
+          find . -type f \( -name "*.iso" -o -name "live-image*" \) 2>/dev/null | head -20
+          
+          ls -lah . | grep -E "iso|live" || echo "No ISO files in current dir"
+          
+          # Check all subdirs
+          find . -maxdepth 2 -type f -name "*.iso" 2>/dev/null
+          
+          if [ -f *.iso ] 2>/dev/null; then
+            cp *.iso raptor-security.iso
+            echo "ISO copied successfully"
           else
-            echo "FAILED: No ISO found"
+            echo "ERROR: No ISO file created"
+            tail -200 build.log
             exit 1
           fi
 
