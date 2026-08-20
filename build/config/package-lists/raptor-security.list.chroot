@@ -24,6 +24,8 @@ pulseaudio
 pavucontrol
 
 # Primary Web Browser & Media
+librewolf
+librewolf-archive-keyring
 vlc
 gimp
 flameshot
