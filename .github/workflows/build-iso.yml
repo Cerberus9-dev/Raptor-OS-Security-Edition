@@ -14,26 +14,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install CA Certificates First
-        run: |
-          sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 -o Acquire::Retries=5
-          sudo apt-get install -y ca-certificates curl
-
       - name: Install Build Dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo sed -E -i 's#https?://archive\.ubuntu\.com#http://azure.archive.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-          sudo sed -E -i 's#https?://security\.ubuntu\.com#http://azure.archive.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-          sudo apt-get update \
-            -o Acquire::ForceIPv4=true \
-            -o Acquire::http::Timeout=10 \
-            -o Acquire::https::Timeout=10 \
-            -o Acquire::Retries=5
+          sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::Retries=5
+          sudo apt-get install -y ca-certificates curl
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            -o Dpkg::Options::="--force-confdef" \
-            -o Dpkg::Options::="--force-confold" \
-            -o Acquire::ForceIPv4=true \
             live-build \
             debootstrap \
             squashfs-tools \
@@ -47,158 +34,94 @@ jobs:
             file \
             gnupg
 
-      - name: Disable Problematic LibreWolf Repository
+      - name: Clean Build Directory
         run: |
-          echo "--- Temporarily removing LibreWolf repository due to certificate issues ---"
-          sudo rm -f /etc/apt/sources.list.d/*librewolf* 2>/dev/null || true
-          if [ -f build/config/archives/librewolf.list.chroot ]; then
-            echo "# LibreWolf repository disabled - certificate verification failing" > build/config/archives/librewolf.list.chroot
-          fi
-          if [ -f build/config/archives/librewolf.list.binary ]; then
-            echo "# LibreWolf repository disabled - certificate verification failing" > build/config/archives/librewolf.list.binary
-          fi
+          cd build
+          sudo lb clean --purge 2>/dev/null || true
+          rm -rf cache/ chroot/ .build/ .lock 2>/dev/null || true
+          ls -la
 
-      - name: Fix Ubuntu-only / unavailable package references
+      - name: Fix Package Lists
         run: |
-          echo "--- dnscrypt-proxy: removed from Debian bookworm entirely, dropping from package lists ---"
           grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^dnscrypt-proxy$/d' "$f"
-            echo "removed from: $f"
           done
-
-          echo "--- scrcpy: removed from Debian bookworm entirely, dropping from package lists ---"
           grep -rln "^scrcpy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^scrcpy$/d' "$f"
-            echo "removed from: $f"
           done
-
-          echo "--- librewolf: removing due to certificate verification issues ---"
           grep -rln "^librewolf$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^librewolf$/d' "$f"
-            echo "removed from: $f"
           done
 
-      - name: Configure Backports & Security Repos
-        run: |
-          mkdir -p build/config/archives
-          cat << 'EOF' > build/config/archives/backports.list.chroot
-          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
-          EOF
-          cat << 'EOF' > build/config/archives/backports.list.binary
-          deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
-          EOF
-
-          cat << 'EOF' > build/config/archives/security.list.chroot
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-          EOF
-          cat << 'EOF' > build/config/archives/security.list.binary
-          deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-          EOF
-
-          # Disable librewolf repo files
-          cat << 'EOF' > build/config/archives/librewolf.list.chroot
-          # LibreWolf repository disabled - certificate verification failing
-          # Re-enable when TLS certificate issues are resolved
-          EOF
-          cat << 'EOF' > build/config/archives/librewolf.list.binary
-          # LibreWolf repository disabled - certificate verification failing
-          # Re-enable when TLS certificate issues are resolved
-          EOF
-
-      - name: Run Validation Check
-        run: |
-          chmod +x build/scripts/validate.sh
-          ./build/scripts/validate.sh || true
-
-      - name: Build ISO
+      - name: Build ISO - Debian Bookworm
         run: |
           cd build
           
-          echo "=========================================="
-          echo "Building Debian Bookworm ISO"
-          echo "=========================================="
+          echo "=== Cleaning previous build ==="
+          sudo lb clean --purge
           
-          # Clean environment
-          sudo lb clean --purge 2>/dev/null || true
-          sleep 2
-          
-          # Configure live-build for Debian (not Ubuntu)
+          echo "=== Configuring live-build ==="
           sudo lb config \
-            --parent-debian-installer-distribution bookworm \
             --mode debian \
             --distribution bookworm \
+            --parent-distribution bookworm \
             --architectures amd64 \
             --linux-flavours amd64 \
-            --linux-packages linux-image \
-            --apt-recommends false \
             --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap "http://deb.debian.org/debian/" \
-            --mirror-bootstrap-security "http://deb.debian.org/debian-security/" \
             --mirror-chroot "http://deb.debian.org/debian/" \
-            --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary "http://deb.debian.org/debian/" \
+            --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --security false \
+            --apt-recommends false \
             --apt-indices false \
             --apt-source-archives false \
-            --debootstrap-options "--no-check-gpg" || true
+            --security false
           
-          echo "=== Starting ISO build ==="
+          echo "=== Building ISO ==="
+          sudo lb build 2>&1 | tee build.log
           
-          # Run build
-          if sudo lb build 2>&1 | sudo tee build.log; then
-            echo "=== Build successful ==="
+          echo "=== Checking results ==="
+          ls -lah *.iso* 2>/dev/null || echo "No ISO created"
+
+      - name: Check Build Success
+        run: |
+          cd build
+          if [ -f *.iso ]; then
+            echo "ISO build successful"
+            ls -lah *.iso
           else
-            BUILD_EXIT=$?
-            echo "Build exited with code: $BUILD_EXIT"
-            
-            # Check for ISO anyway
-            if sudo find . -maxdepth 1 -name "*.iso" -type f 2>/dev/null | grep -q .; then
-              echo "ISO file was created despite exit code"
-            else
-              echo "=== Last 200 lines of build.log ==="
-              sudo tail -200 build.log
-              exit 1
-            fi
+            echo "ISO build failed"
+            tail -100 build.log
+            exit 1
           fi
-          
-          echo "=== Checking for ISO artifacts ==="
-          sudo ls -lah . | grep -E "\.(iso|log)$" || echo "No artifacts found"
 
       - name: Prepare Artifact
         if: success()
         run: |
           cd build
-          GENERATED_ISO=$(sudo find . -maxdepth 1 -name "*.iso" -type f | head -n 1)
-          if [ -z "$GENERATED_ISO" ]; then
-            echo "[ERROR] ISO generation failed: No .iso file created."
-            echo "=== Last 200 lines of build.log ==="
-            sudo tail -200 build.log || echo "No build.log found"
+          ISO_FILE=$(ls -1 *.iso 2>/dev/null | head -1)
+          if [ -z "$ISO_FILE" ]; then
+            echo "No ISO file found"
             exit 1
           fi
-          echo "Found ISO: $GENERATED_ISO"
+          
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          sudo mv "$GENERATED_ISO" "$FINAL_NAME"
-          sudo chown $(id -u):$(id -g) "$FINAL_NAME"
+          mv "$ISO_FILE" "$FINAL_NAME"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
-          echo "=== Final artifacts ==="
-          ls -lah *.iso* 2>/dev/null || echo "No ISO artifacts"
+          ls -lah *.iso*
 
-      - name: Upload ISO
+      - name: Upload Artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: raptor-security-iso
-          path: |
-            build/*.iso
-            build/*.sha256
+          path: build/*.iso*
 
-      - name: Upload Log on Failure
+      - name: Upload Failure Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-failure-log
-          path: |
-            build/build.log
-            build/cache/build.log
+          name: build-failure-logs
+          path: build/build.log
