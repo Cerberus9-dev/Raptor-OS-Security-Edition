@@ -79,6 +79,7 @@ jobs:
             --mode debian \
             --distribution bookworm \
             --architectures amd64 \
+            --archive-areas "main contrib non-free non-free-firmware" \
             --linux-packages none \
             --binary-images iso \
             --iso-application "Raptor Security Edition" \
