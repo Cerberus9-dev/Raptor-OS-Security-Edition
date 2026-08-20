@@ -120,7 +120,7 @@ jobs:
           autopsy
           PKGEOF
           
-          # Create LibreWolf repo (HTTP only to avoid cert issues)
+          # Create LibreWolf repo
           cat > config/archives/librewolf.list.chroot << 'REPOEOF'
           deb http://deb.librewolf.net bookworm main
           REPOEOF
@@ -133,7 +133,7 @@ jobs:
         run: |
           cd build
           
-          echo "=== Configuring live-build for Debian ==="
+          echo "=== Configuring live-build ==="
           sudo lb config \
             --mode debian \
             --distribution bookworm \
@@ -149,45 +149,42 @@ jobs:
             --apt-indices false \
             --apt-source-archives false \
             --security false \
-            --verbose
+            --image-type iso \
+            --bootloader isolinux \
+            --debian-installer live
           
           echo ""
-          echo "=== Starting ISO build ==="
-          sudo lb build --verbose 2>&1 | tee build.log
-          BUILD_EXIT=$?
+          echo "=== Building ISO ==="
+          sudo lb build 2>&1 | tee build.log
           
           echo ""
-          echo "Build exit code: $BUILD_EXIT"
-          echo ""
-          
-          # Check if ISO was created regardless of exit code
-          if ls *.iso 2>/dev/null | grep -q .; then
-            echo "SUCCESS: ISO file found"
-            ls -lah *.iso
-            exit 0
-          else
-            echo "FAILED: No ISO file created"
-            echo ""
-            echo "=== Last 300 lines of build.log ==="
-            tail -300 build.log
-            exit 1
-          fi
+          echo "=== Checking for ISO ==="
+          ls -lah *.iso 2>/dev/null || ls -lah live-image* 2>/dev/null || (echo "No ISO/image found" && tail -100 build.log && exit 1)
 
       - name: Prepare Artifacts
         if: success()
         run: |
           cd build
+          
+          # Look for ISO
           ISO_FILE=$(ls *.iso 2>/dev/null | head -1)
+          if [ -z "$ISO_FILE" ]; then
+            ISO_FILE=$(ls live-image* 2>/dev/null | head -1)
+          fi
           
           if [ -z "$ISO_FILE" ]; then
-            echo "No ISO found"
+            echo "ERROR: No ISO found"
             exit 1
           fi
           
+          echo "Found image: $ISO_FILE"
+          
           BUILD_DATE=$(date -u +'%Y%m%d_%H%M')
           FINAL_NAME="raptor-security-${BUILD_DATE}-amd64.iso"
-          mv "$ISO_FILE" "$FINAL_NAME"
+          
+          cp "$ISO_FILE" "$FINAL_NAME"
           sha256sum "$FINAL_NAME" > "${FINAL_NAME}.sha256"
+          
           ls -lah *.iso*
 
       - name: Upload ISO
