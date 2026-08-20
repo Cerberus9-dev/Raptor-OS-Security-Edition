@@ -34,18 +34,6 @@ jobs:
             file \
             gnupg
 
-      - name: Clean Previous Build
-        run: |
-          cd build
-          sudo lb clean --purge 2>/dev/null || true
-          rm -rf cache/ chroot/ .build/ .lock 2>/dev/null || true
-          echo "Build directory cleaned"
-
-      - name: Disable LibreWolf Repository
-        run: |
-          echo "# LibreWolf repository disabled - certificate verification issues" > build/config/archives/librewolf.list.binary
-          echo "# LibreWolf repository disabled - certificate verification issues" > build/config/archives/librewolf.list.chroot
-
       - name: Remove Unavailable Packages
         run: |
           grep -rln "^dnscrypt-proxy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
@@ -53,9 +41,6 @@ jobs:
           done
           grep -rln "^scrcpy$" build/config/package-lists/ 2>/dev/null | while read -r f; do
             sed -i '/^scrcpy$/d' "$f"
-          done
-          grep -rln "^librewolf$" build/config/package-lists/ 2>/dev/null | while read -r f; do
-            sed -i '/^librewolf$/d' "$f"
           done
 
       - name: Build ISO - Debian Bookworm
@@ -65,8 +50,9 @@ jobs:
           echo "=== Cleaning build environment ==="
           sudo lb clean --purge
           
-          echo "=== Configuring live-build for Debian Bookworm ==="
+          echo "=== Configuring live-build ==="
           sudo lb config \
+            --noauto \
             --mode debian \
             --distribution bookworm \
             --parent-distribution bookworm \
@@ -78,12 +64,16 @@ jobs:
             --mirror-binary "http://deb.debian.org/debian/" \
             --mirror-chroot-security "http://deb.debian.org/debian-security/" \
             --mirror-binary-security "http://deb.debian.org/debian-security/" \
-            --apt-recommends false \
             --apt-indices false \
-            --apt-source-archives false \
+            --apt-recommends true \
             --security false \
             --debootstrap-options "--no-check-gpg" \
             2>&1 | tee config.log
+          
+          echo ""
+          echo "=== Disabling LibreWolf cert issues ==="
+          sudo sed -i 's|deb https://deb.librewolf.net|deb http://deb.librewolf.net|g' config/archives/*.list* 2>/dev/null || true
+          sudo sed -i '/^deb /s| https://| http://|g' config/archives/*.list* 2>/dev/null || true
           
           echo ""
           echo "=== Starting ISO build ==="
@@ -96,8 +86,8 @@ jobs:
             ls -lah *.iso
           else
             echo "FAILED: No ISO created"
-            echo "=== Last 100 lines of build.log ==="
-            tail -100 build.log
+            echo "=== Last 150 lines of build.log ==="
+            tail -150 build.log
             exit 1
           fi
 
