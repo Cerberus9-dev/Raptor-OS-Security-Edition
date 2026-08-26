@@ -12,13 +12,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Disk Space on Runner
+      - name: Check Runner Disk Space
         run: |
-          echo "=== Clearing unused SDKs to free disk space ==="
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          echo "=== Host Runner Disk Status ==="
           df -h
 
       - name: Install Build Dependencies
@@ -37,7 +33,6 @@ jobs:
             xorriso \
             grub-pc-bin \
             grub-efi-amd64-bin \
-            mkeyring \
             po4a
 
       - name: Ensure Executable Script Permissions
