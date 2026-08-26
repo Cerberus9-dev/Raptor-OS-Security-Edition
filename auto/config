@@ -24,5 +24,4 @@ lb config nooption "${@}" \
     --system live \
     --binary-images iso-hybrid \
     --apt-indices false \
-    --apt-recommends true \
-    --debootstrap-options "--include=debian-archive-keyring"
+    --apt-recommends true
