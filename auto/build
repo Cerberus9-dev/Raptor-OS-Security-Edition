@@ -2,4 +2,11 @@
 
 set -e
 
-lb build "${@}"
+# Prevent recursive execution loop when invoked via lb build / lb_build
+if [ "${LB_AUTO_BUILD_RUNNING}" = "true" ]; then
+    exit 0
+fi
+
+export LB_AUTO_BUILD_RUNNING="true"
+
+lb build nooption "${@}"
