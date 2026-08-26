@@ -1,26 +1,22 @@
 #!/bin/sh
-
 set -e
 
-# Prevent recursive execution loop when invoked via lb clean / lb_clean
-if [ "${LB_AUTO_CLEAN_RUNNING}" = "true" ]; then
-    exit 0
+echo "Executing safe auto/clean script..."
+
+# Execute standard lb clean step
+lb clean --purge "${@}"
+
+# Safely delete chroot cache and temporary clean artifacts without glob expansion overflow
+if [ -d "chroot" ]; then
+    sudo rm -rf chroot
 fi
 
-export LB_AUTO_CLEAN_RUNNING="true"
+# Clean build artifacts using find + delete to prevent "Argument list too long" errors
+find . -maxdepth 2 \( -name "*.iso" -o -name "*.hybrid.iso" -o -name "*.contents" -o -name "*.zsync" \) -type f -delete
 
-# Execute internal live-build clean routine directly to bypass wrapper recursion
-if [ -x /usr/lib/live/build/clean ]; then
-    /usr/lib/live/build/clean "${@}"
-elif [ -x /usr/lib/live/build/lb_clean ]; then
-    /usr/lib/live/build/lb_clean "${@}"
+# Safely purge cache directories without expanding massive file lists
+if [ -d ".build" ]; then
+    sudo rm -rf .build
 fi
 
-# Safely remove live-build stage directories without globbing
-rm -rf .build/
-rm -rf config/binary config/bootstrap config/chroot config/common config/source
-
-# Use find -delete for large nested temporary directories if they exist
-if [ -d cache/packages ]; then
-    find cache/packages -type f -delete 2>/dev/null || true
-fi
+echo "auto/clean completed successfully."
