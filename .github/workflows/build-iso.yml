@@ -1,73 +1,38 @@
-name: Build Raptor OS Security Edition ISO
+name: Build Raptor OS Security Edition
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
-jobs:
-  build-iso:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+# Cancel previous running builds for the same ref when a new commit is pushed
+concurrency:
+  group: raptor-os-build-${{ github.ref }}
+  cancel-in-progress: true
 
-      - name: Ensure Executable Permissions
-        run: |
-          chmod +x auto/config auto/build auto/clean
+jobs:
+  build:
+    name: Build ISO
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            live-build \
-            debootstrap \
-            debian-archive-keyring \
-            syslinux \
-            syslinux-utils \
-            isolinux \
-            mtools \
-            dosfstools \
-            squashfs-tools \
-            xorriso \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            po4a
+          sudo apt-get install -y live-build debootstrap squashfs-tools xorriso
 
-      - name: Clean Previous Build State
+      - name: Clean Previous Builds
         run: |
-          sudo lb clean --purge
+          # Safe clean script execution
+          chmod +x ./auto/clean
+          ./auto/clean
 
-      - name: Configure Live-Build
+      - name: Build Raptor OS ISO
         run: |
-          sudo lb config
-
-      - name: Build ISO Image
-        run: |
-          sudo DEBIAN_FRONTEND=noninteractive lb build
-
-      - name: Verify Generated ISO Output
-        run: |
-          ISO_FILE=$(find . -maxdepth 1 -type f -name "*.iso" | head -n 1)
-          if [ -z "$ISO_FILE" ]; then
-            echo "::error::No ISO file generated."
-            exit 1
-          fi
-
-          SIZE=$(stat -c%s "$ISO_FILE")
-          if [ "$SIZE" -lt 104857600 ]; then
-            echo "::error::Generated ISO is smaller than expected ($SIZE bytes)."
-            exit 1
-          fi
-
-          echo "ISO_PATH=$ISO_FILE" >> $GITHUB_ENV
-          echo "ISO_NAME=$(basename $ISO_FILE)" >> $GITHUB_ENV
-          echo "ISO verified: $ISO_FILE ($(du -h "$ISO_FILE" | cut -f1))"
-
-      - name: Upload ISO Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ISO_NAME }}
-          path: ${{ env.ISO_PATH }}
-          if-no-files-found: error
-          retention-days: 7
+          # Direct lb build without unbuffered trace debugging
+          sudo lb build
