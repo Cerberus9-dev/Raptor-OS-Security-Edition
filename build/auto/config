@@ -1,19 +1,28 @@
 #!/bin/sh
+
 set -e
-lb config nobase \
+
+lb config nooption "${@}" \
     --mode debian \
     --architectures amd64 \
+    --linux-flavours amd64 \
     --distribution bookworm \
-    --parent-distribution bookworm \
     --archive-areas "main contrib non-free non-free-firmware" \
     --parent-archive-areas "main contrib non-free non-free-firmware" \
-    --apt apt \
+    --mirror-bootstrap "http://deb.debian.org/debian/" \
+    --mirror-chroot "http://deb.debian.org/debian/" \
+    --mirror-binary "http://deb.debian.org/debian/" \
+    --parent-mirror-bootstrap "http://deb.debian.org/debian/" \
+    --parent-mirror-chroot "http://deb.debian.org/debian/" \
+    --parent-mirror-binary "http://deb.debian.org/debian/" \
+    --security true \
+    --mirror-chroot-security "http://security.debian.org/debian-security" \
+    --mirror-binary-security "http://security.debian.org/debian-security" \
+    --parent-mirror-chroot-security "http://security.debian.org/debian-security" \
+    --parent-mirror-binary-security "http://security.debian.org/debian-security" \
+    --keyring-packages debian-archive-keyring \
+    --system live \
+    --binary-images iso-hybrid \
     --apt-indices false \
-    --apt-recommends false \
-    --bootloader isolinux \
-    --iso-application "Raptor OS Security Edition" \
-    --iso-preparer "Cerberus9-dev" \
-    --iso-publisher "Raptor OS Project" \
-    --iso-volume "RAPTOR-SECURITY" \
-    --win32-loader false \
-    "${@}"
+    --apt-recommends true \
+    --debootstrap-options "--include=debian-archive-keyring"
