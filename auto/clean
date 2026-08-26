@@ -2,5 +2,25 @@
 
 set -e
 
-lb clean --purge "${@}"
-rm -rf .build
+# Prevent recursive execution loop when invoked via lb clean / lb_clean
+if [ "${LB_AUTO_CLEAN_RUNNING}" = "true" ]; then
+    exit 0
+fi
+
+export LB_AUTO_CLEAN_RUNNING="true"
+
+# Execute internal live-build clean routine directly to bypass wrapper recursion
+if [ -x /usr/lib/live/build/clean ]; then
+    /usr/lib/live/build/clean "${@}"
+elif [ -x /usr/lib/live/build/lb_clean ]; then
+    /usr/lib/live/build/lb_clean "${@}"
+fi
+
+# Safely remove live-build stage directories without globbing
+rm -rf .build/
+rm -rf config/binary config/bootstrap config/chroot config/common config/source
+
+# Use find -delete for large nested temporary directories if they exist
+if [ -d cache/packages ]; then
+    find cache/packages -type f -delete 2>/dev/null || true
+fi
