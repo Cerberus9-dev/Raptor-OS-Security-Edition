@@ -1,12 +1,12 @@
 #!/bin/sh
 set -e
 
-echo "Executing safe auto/clean script..."
+echo "Running safe auto/clean..."
 
-# Clean live-build state
+# Clean standard live-build targets
 lb clean --purge "${@}"
 
-# Safely remove build output directories if they exist
+# Safely delete directories directly by path name without wildcard expansion
 if [ -d "chroot" ]; then
     sudo rm -rf chroot
 fi
@@ -15,7 +15,7 @@ if [ -d ".build" ]; then
     sudo rm -rf .build
 fi
 
-# Use find -delete to safely clean ISO and intermediate build artifacts without glob overflow
+# Clean output ISOs and build artifacts using find + delete
 find . -maxdepth 2 \( -name "*.iso" -o -name "*.hybrid.iso" -o -name "*.contents" -o -name "*.zsync" \) -type f -delete
 
 echo "auto/clean completed successfully."
