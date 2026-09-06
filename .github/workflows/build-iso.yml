@@ -8,9 +8,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# Full build needs to write artifacts to GitHub Releases on tag pushes
+# Build artifacts go to workflow artifacts (pulled down and re-hosted on
+# Internet Archive — ISOs are too large to live in GitHub Releases).
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: raptor-os-build-${{ github.ref }}
@@ -333,6 +334,9 @@ jobs:
           sha256sum "$ISO" > raptor-security.sha256
           cat raptor-security.sha256
 
+      # The ISO is not published to GitHub Releases (too large): the build is
+      # uploaded as a workflow artifact, and the actual release ISO is hosted
+      # on Internet Archive, matching Raptor OS Home Edition.
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
@@ -342,16 +346,6 @@ jobs:
             build/raptor-security.sha256
           compression-level: 0
           retention-days: 30
-
-      # Pushing a v* tag publishes the ISO and checksum straight to GitHub
-      # Releases, matching the README's documented release flow.
-      - name: Upload ISO to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            build/*.iso
-            build/raptor-security.sha256
 
       - name: Fix cache permissions for save
         if: always()
