@@ -188,7 +188,12 @@ jobs:
           Pin-Priority: -1
           EOF
 
-          LIST_FILE="config/package-lists/raptor-base.list.chroot"
+          # This repo's package list is raptor-security.list.chroot (not the
+          # raptor-base.list.chroot of older Raptor projects) — inject the
+          # systemd init packages into whichever list exists, so live-build's
+          # live-packages stage selects live-config-systemd rather than
+          # failing on the hard-banned live-config-sysvinit.
+          LIST_FILE="config/package-lists/raptor-security.list.chroot"
           if [ -f "$LIST_FILE" ]; then
             grep -q "^systemd-sysv$" "$LIST_FILE" || sed -i '1i systemd-sysv\nlive-config-systemd' "$LIST_FILE"
           fi

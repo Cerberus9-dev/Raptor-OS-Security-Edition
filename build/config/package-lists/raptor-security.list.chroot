@@ -1,3 +1,11 @@
+# --- Init System (systemd, forced) ---
+# Live-build picks the init-matching live-config-* package at the "live
+# packages" stage. Forcing systemd-sysv here makes it install
+# live-config-systemd instead of looking for (non-existent / pinned-out)
+# live-config-sysvinit.
+systemd-sysv
+live-config-systemd
+
 # --- Base Desktop Environment & Display ---
 xfce4
 xfce4-goodies
