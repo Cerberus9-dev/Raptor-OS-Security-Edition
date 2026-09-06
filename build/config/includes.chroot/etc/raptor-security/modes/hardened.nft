@@ -1,0 +1,27 @@
+flush ruleset
+
+table inet raptor_security {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        iifname "lo" accept
+        ct state established,related accept
+        meta l4proto icmp accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        # Hardened egress: only loopback, established flows, DNS, and the
+        # standard web ports are accepted; Tor's SOCKS/TransPort reachable
+        # on localhost is implicitly covered by the loopback rule. Anything
+        # else is rejected.
+        ct state established,related accept
+        oifname "lo" accept
+        udp dport 53 accept
+        tcp dport { 53, 80, 443 } accept
+        reject with icmp type port-unreachable
+    }
+}

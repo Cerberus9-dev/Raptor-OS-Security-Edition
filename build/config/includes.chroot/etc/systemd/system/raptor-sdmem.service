@@ -1,0 +1,12 @@
+[Unit]
+Description=Raptor OS Volatile Memory Anti-Forensics Wipe
+DefaultDependencies=no
+After=final.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sdmem -f -ll
+TimeoutStartSec=60
+
+[Install]
+WantedBy=final.target

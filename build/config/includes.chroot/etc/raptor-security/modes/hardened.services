@@ -1,0 +1,5 @@
+# Hardened mode service posture — full Tor isolation plus NetworkManager
+# (wireguard/openvpn control and MAC randomization rely on nmcli).
++ nftables
++ NetworkManager
++ tor@default

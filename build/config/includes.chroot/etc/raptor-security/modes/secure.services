@@ -1,0 +1,4 @@
+# Secure mode service posture — one unit per line, '+' to ensure-started,
+# '-' to ensure-stopped. Read by raptor_mode_managerd._apply_services().
++ nftables
++ NetworkManager

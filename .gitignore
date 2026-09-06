@@ -1,0 +1,12 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# live-build artifacts
+build/cache/
+build/chroot/
+build/binary/
+build/.stage/
+build/auto/
+*.iso
+*.sha256

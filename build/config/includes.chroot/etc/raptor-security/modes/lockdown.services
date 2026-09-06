@@ -1,0 +1,8 @@
+# Lockdown mode service posture — sever radios and network services.
+# NetworkManager controls the physical NICs, so stopping it (plus the
+# nftables chain policy drop in lockdown.nft) is what actually cuts the
+# machine off. Tor is stopped too — a degraded/partial tunnel in lockdown
+# contradicts the mode's "no outbound" promise.
+- NetworkManager
+- tor@default
+- nftables

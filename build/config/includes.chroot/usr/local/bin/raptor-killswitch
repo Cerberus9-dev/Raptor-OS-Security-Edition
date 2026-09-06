@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONF_DIR="/etc/raptor"
+mkdir -p "$CONF_DIR"
+
+ACTION="${1:-on}"
+
+if [ "${ACTION,,}" = "on" ]; then
+    # 1. Sever physical radios & drop all packet processing instantly
+    rfkill block all 2>/dev/null || true
+    nft flush ruleset
+    nft -f - <<EOF
+table inet killswitch {
+    chain input { type filter hook input priority 0; policy drop; }
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output { type filter hook output priority 0; policy drop; }
+}
+EOF
+    touch "${CONF_DIR}/killswitch_active"
+
+    # 2. Trigger asynchronous background RAM wipe
+    systemctl start raptor-ramwipe-now.service 2>/dev/null || true
+
+else
+    # Stop any active background wipe job & restore radios/firewall
+    systemctl stop raptor-ramwipe-now.service 2>/dev/null || true
+    rfkill unblock all 2>/dev/null || true
+    rm -f "${CONF_DIR}/killswitch_active"
+    
+    MODE=$(cat "${CONF_DIR}/current_mode" 2>/dev/null || echo "SECURITY")
+    /usr/local/bin/raptor-security "${MODE,,}"
+fi
