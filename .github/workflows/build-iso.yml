@@ -42,15 +42,16 @@ jobs:
 
       # Content-addressed permanent key (matches update.yml's description of
       # build-iso.yml): restores the stage cache whenever the config sources
-      # are unchanged, and only re-downloads when they change. Bumped to v3 to
-      # wipe any old cache that may have been poisoned with sysvinit packages.
+      # are unchanged, and only re-downloads when they change. Bumped to v4 to
+      # wipe old caches that contained a sysvinit-based chroot — the v3
+      # restore-keys fallback kept pulling those back, causing
+      # lb_chroot_live-packages to try installing the non-existent
+      # live-config-sysvinit.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v3-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'auto/config') }}
-          restore-keys: |
-            raptor-security-lb-v3-${{ runner.os }}-
+          key: raptor-security-lb-v4-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
