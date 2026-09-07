@@ -31,4 +31,6 @@ lb config noauto "${@}" \
     --iso-volume "RAPTOR-SECURITY" \
     --apt-indices false \
     --apt-recommends true \
-    --cache-stages ""
+    --cache-stages "" \
+    --bootappend-live "boot=live config components ignore_uuid live-media-timeout=30" \
+    --bootappend-live-failsafe "boot=live config components ignore_uuid live-media-timeout=30 memtest noapic noapm nodma nomce nolapic nomodeset nosmp nosplash vga=normal"
