@@ -294,12 +294,12 @@ jobs:
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30 noapic noapm nodma nomce nolapic nosmp'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
           } > efi-build/grub.cfg
 
