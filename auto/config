@@ -27,5 +27,7 @@ lb config noauto "${@}" \
     --system live \
     --initsystem systemd \
     --binary-images iso-hybrid \
+    --iso-application "Raptor OS Security" \
+    --iso-volume "RAPTOR-SECURITY" \
     --apt-indices false \
     --apt-recommends true

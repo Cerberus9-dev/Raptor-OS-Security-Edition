@@ -355,6 +355,20 @@ jobs:
             mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
           fi
 
+      # live-build writes the image as binary.hybrid.iso regardless of
+      # project naming; rename it to the product name + build date so the
+      # debug artifact and any release upload carry a meaningful filename.
+      - name: Rename ISO to product name
+        working-directory: build
+        run: |
+          set -e
+          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
+          DATE="$(date -u +%Y%m%d)"
+          FINAL="raptor-security-${DATE}.iso"
+          mv "$ISO" "$FINAL"
+          echo "Renamed to: $FINAL"
+          ls -lh "$FINAL"
+
       - name: Compute checksum
         working-directory: build
         run: |
