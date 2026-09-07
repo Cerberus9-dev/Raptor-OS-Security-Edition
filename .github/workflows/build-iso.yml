@@ -42,16 +42,18 @@ jobs:
 
       # Content-addressed permanent key (matches update.yml's description of
       # build-iso.yml): restores the stage cache whenever the config sources
-      # are unchanged, and only re-downloads when they change. Bumped to v4 to
-      # wipe old caches that contained a sysvinit-based chroot — the v3
-      # restore-keys fallback kept pulling those back, causing
-      # lb_chroot_live-packages to try installing the non-existent
-      # live-config-sysvinit.
+      # are unchanged, and only re-downloads when they change. Bumped to v5:
+      # repairing a cache that failed when restored after a completed build —
+      # a freshly-restored chroot that had already been through the binary
+      # (ISO assembly) stage left apt unable to create its temp files
+      # (apt-key failed on "Couldn't create temporary file /tmp/apt.conf.*"),
+      # aborting the very first apt-get update of the chroot stage. v5 also
+      # drops old sysvinit-era caches kept alive by v4.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v4-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
+          key: raptor-security-lb-v5-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
@@ -179,6 +181,18 @@ jobs:
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
+          # live-build keeps its own full chroot snapshot in cache/chroot and
+          # resumes from it on the next run. A snapshot taken at the end of a
+          # completed build (after the binary/ISO stage) can leave /tmp in a
+          # state where the very first apt-get update of the chroot stage
+          # fails (apt-key: "Couldn't create temporary file /tmp/apt.conf.*").
+          # Replace it with a clean world-writable sticky dir before restore.
+          if [ -d cache/chroot ]; then
+            sudo rm -rf cache/chroot/tmp
+            sudo mkdir -p cache/chroot/tmp
+            sudo chmod 1777 cache/chroot/tmp
+            sudo chown root:root cache/chroot/tmp
+          fi
 
       # The image must boot with systemd as PID 1. auto/config explicitly
       # sets --initsystem systemd (Ubuntu's live-build defaults Debian live
