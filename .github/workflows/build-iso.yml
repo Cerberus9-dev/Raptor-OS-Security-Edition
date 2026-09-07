@@ -40,19 +40,15 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      # Cache that only persists the apt .deb archives (cache/apt_archives),
-      # not live-build STAGE snapshots. Stage snapshots (--cache-stages "") are
-      # disabled because a snapshot saved at the end of a completed build
-      # poisoned the next resume: apt-key aborted on "Couldn't create temporary
-      # file /tmp/apt.conf.*", failing the very first chroot apt-get update.
-      # Every run now bootstraps fresh; the only resume is inert .debs, so
-      # builds are deterministic. Bumped to v6 to evict the poisoned v5
-      # snapshots.
-      - name: Cache live-build stages
-        uses: actions/cache@v4
-        with:
-          path: build/cache
-          key: raptor-security-lb-v6-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
+      # No actions/cache here on purpose. live-build STAGE snapshots
+      # poisoned the next resume: a snapshot saved at the end of a completed
+      # build left /tmp in a state where the very first chroot apt-get update
+      # aborted with apt-key "Couldn't create temporary file /tmp/apt.conf.*".
+      # --cache false / --cache-packages false / --cache-stages none in
+      # auto/config stop live-build from writing or restoring cache/ at all,
+      # so every run now bootstraps 100% fresh and builds are deterministic.
+      # Persisting build/cache via actions/cache would re-import that poison
+      # on the very next push, so there is no cache step.
 
       - name: Free Disk Space
         run: |
@@ -169,29 +165,15 @@ jobs:
             "$LB_FILE"
           sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
 
-      # Removes the previous build tree but keeps cache/, then deletes the five
-      # generated top-level config variable files. Those files are what config/
-      # stores after the last lb config; deleting them forces auto/config to
+      # Removes any previous build tree, then deletes the five generated
+      # top-level config variable files. Those files are what config/ stores
+      # after the last lb config; deleting them forces auto/config to
       # regenerate them fresh, so option changes in auto/config take effect.
-      - name: Clean previous build artifacts (preserving cache)
+      - name: Clean previous build artifacts
         working-directory: build
         run: |
           sudo rm -rf chroot binary .build
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
-          echo "cache/ contents preserved:"
-          du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
-          # live-build keeps its own full chroot snapshot in cache/chroot and
-          # resumes from it on the next run. A snapshot taken at the end of a
-          # completed build (after the binary/ISO stage) can leave /tmp in a
-          # state where the very first apt-get update of the chroot stage
-          # fails (apt-key: "Couldn't create temporary file /tmp/apt.conf.*").
-          # Replace it with a clean world-writable sticky dir before restore.
-          if [ -d cache/chroot ]; then
-            sudo rm -rf cache/chroot/tmp
-            sudo mkdir -p cache/chroot/tmp
-            sudo chmod 1777 cache/chroot/tmp
-            sudo chown root:root cache/chroot/tmp
-          fi
 
       # The image must boot with systemd as PID 1. auto/config explicitly
       # sets --initsystem systemd (Ubuntu's live-build defaults Debian live

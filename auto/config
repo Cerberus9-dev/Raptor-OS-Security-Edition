@@ -31,5 +31,7 @@ lb config noauto "${@}" \
     --iso-volume "RAPTOR-SECURITY" \
     --apt-indices false \
     --apt-recommends true \
-    --cache-stages "" \
+    --cache false \
+    --cache-packages false \
+    --cache-stages none \
     --bootappend-live "boot=live config components ignore_uuid live-media-timeout=30"
