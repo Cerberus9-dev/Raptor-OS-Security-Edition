@@ -30,4 +30,5 @@ lb config noauto "${@}" \
     --iso-application "Raptor OS Security" \
     --iso-volume "RAPTOR-SECURITY" \
     --apt-indices false \
-    --apt-recommends true
+    --apt-recommends true \
+    --cache-stages ""

@@ -40,20 +40,19 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      # Content-addressed permanent key (matches update.yml's description of
-      # build-iso.yml): restores the stage cache whenever the config sources
-      # are unchanged, and only re-downloads when they change. Bumped to v5:
-      # repairing a cache that failed when restored after a completed build —
-      # a freshly-restored chroot that had already been through the binary
-      # (ISO assembly) stage left apt unable to create its temp files
-      # (apt-key failed on "Couldn't create temporary file /tmp/apt.conf.*"),
-      # aborting the very first apt-get update of the chroot stage. v5 also
-      # drops old sysvinit-era caches kept alive by v4.
+      # Cache that only persists the apt .deb archives (cache/apt_archives),
+      # not live-build STAGE snapshots. Stage snapshots (--cache-stages "") are
+      # disabled because a snapshot saved at the end of a completed build
+      # poisoned the next resume: apt-key aborted on "Couldn't create temporary
+      # file /tmp/apt.conf.*", failing the very first chroot apt-get update.
+      # Every run now bootstraps fresh; the only resume is inert .debs, so
+      # builds are deterministic. Bumped to v6 to evict the poisoned v5
+      # snapshots.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v5-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
+          key: raptor-security-lb-v6-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
