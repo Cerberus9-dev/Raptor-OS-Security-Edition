@@ -25,6 +25,7 @@ lb config noauto "${@}" \
     --parent-mirror-binary-security "http://security.debian.org/debian-security" \
     --keyring-packages debian-archive-keyring \
     --system live \
+    --initsystem systemd \
     --binary-images iso-hybrid \
     --apt-indices false \
     --apt-recommends true

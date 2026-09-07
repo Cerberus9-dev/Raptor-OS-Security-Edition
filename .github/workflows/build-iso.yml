@@ -170,15 +170,16 @@ jobs:
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
 
-      # The image must boot with systemd as PID 1. A cache from before the v3
-      # bump could contain a sysvinit-tainted chroot, so explicitly purge legacy
-      # init packages from the lists and pin them out of reach so neither a
-      # restored stage cache nor a deps change can pull them back in.
+      # The image must boot with systemd as PID 1. auto/config explicitly
+      # sets --initsystem systemd (Ubuntu's live-build defaults Debian live
+      # systems to sysvinit, which would make lb_chroot_live-packages try to
+      # install the non-existent live-config-sysvinit). This step additionally
+      # purges sysvinit packages from the lists and pins them out of reach so
+      # neither the stage cache nor a deps change can pull them back in.
       - name: Hard-ban sysvinit and configure APT
         working-directory: build
         run: |
           set -e
-          sed -i '/--systemd/d' ../auto/config || true
 
           find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^sysvinit-core/d; /^live-config-sysvinit/d; /^initscripts/d; /^orphan-sysvinit-scripts/d' {} + || true
 
