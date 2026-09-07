@@ -94,6 +94,7 @@ sleuthkit
 firejail
 
 # --- Secure User Applications ---
+librewolf
 torbrowser-launcher
 onionshare
 curl
