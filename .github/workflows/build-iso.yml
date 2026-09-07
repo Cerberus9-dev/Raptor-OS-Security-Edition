@@ -51,7 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v4-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'auto/config') }}
+          key: raptor-security-lb-v4-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
@@ -73,6 +73,8 @@ jobs:
           squashfs-tools \
           xorriso \
           isolinux \
+          syslinux \
+          syslinux-common \
           syslinux-utils \
           grub-efi-amd64-bin \
           mtools \
@@ -120,15 +122,23 @@ jobs:
           sudo sed -i '/SECURITY/ s#/updates#-security#g' "$LB_FILE"
           grep -n "VOLATILE" "$LB_FILE" | grep -- "-updates" || echo "WARNING: expected VOLATILE lines not found — investigate before trusting this build"
 
-      # ubuntu-24.04's isolinux package keeps the boot files under /usr/lib and
-      # does not ship the symlinks live-build expects inside its theme dir.
-      # Missing symlinks make every isolinux build error out at the binary stage.
-      - name: Patch live-build isolinux theme paths
+      # live-build ships the isolinux template entries as SYMLINKS into
+      # Ubuntu host paths (/usr/lib/ISOLINUX/isolinux.bin etc.). lb_binary_syslinux
+      # copies that template into the Debian bookworm build chroot and
+      # dereferences the links there, where they dangle — bookworm's syslinux
+      # packages ship NO isolinux.bin at all (only /usr/lib/syslinux/modules/bios/).
+      # Drop REAL syslinux 6.04 binaries taken from the runner into the template
+      # instead of symlinks, so the chrooted copy is self-contained. All three
+      # come from the same syslinux 6.04 build, keeping versions consistent.
+      - name: Materialize live-build isolinux template files (real, not symlinks)
         run: |
           set -e
           THEME_DIR="/usr/share/live/build/bootloaders/isolinux"
-          sudo ln -sf /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
-          sudo ln -sf /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
+          sudo rm -f "$THEME_DIR/isolinux.bin" "$THEME_DIR/ldlinux.c32" "$THEME_DIR/vesamenu.c32"
+          sudo cp /usr/lib/ISOLINUX/isolinux.bin "$THEME_DIR/isolinux.bin"
+          sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$THEME_DIR/ldlinux.c32"
+          sudo cp /usr/lib/syslinux/modules/bios/vesamenu.c32 "$THEME_DIR/vesamenu.c32"
+          file "$THEME_DIR/isolinux.bin" "$THEME_DIR/ldlinux.c32" "$THEME_DIR/vesamenu.c32"
 
       # bookworm's live-build still calls the legacy `rsvg` binary, which modern
       # distros no longer ship. Its replacement `rsvg-convert` (librsvg2-bin,
