@@ -36,7 +36,13 @@ apply_hardened() {
     # Restrict Outbound to Standard Web/DNS Ports
     nft add rule inet filter output udp dport 53 accept
     nft add rule inet filter output tcp dport { 53, 80, 443 } accept
-    echo "[Raptor Firewall] HARDENED mode applied (Strict Egress Filtering Active)."
+
+    # Keep VPN tunnels alive: allow tunnel interfaces and their UDP transports
+    # (WARP/WireGuard/OpenVPN/obfs4 all use UDP or high/random TCP ports).
+    nft add rule inet filter output udp dport { 4500, 2408, 51820, 51821 } accept
+    nft add rule inet filter output oifname { "tun0", "tun1", "wg0", "CloudflareWARP", "WARP", "warp0" } accept
+    nft add rule inet filter output meta l4proto udp accept
+    echo "[Raptor Firewall] HARDENED mode applied (Strict Egress Filtering + VPN Tunnel Support)."
 }
 
 apply_lockdown() {

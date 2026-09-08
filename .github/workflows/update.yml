@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/live/*.hook.chroot', 'auto/config') }}
+          key: raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
           restore-keys: |
             raptor-security-lb-update-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-
 
@@ -181,7 +181,7 @@ jobs:
           Pin-Priority: -1
           EOF
 
-          LIST_FILE="config/package-lists/raptor-base.list.chroot"
+          LIST_FILE="config/package-lists/raptor-security.list.chroot"
           if [ -f "$LIST_FILE" ]; then
             grep -q "^systemd-sysv$" "$LIST_FILE" || sed -i '1i systemd-sysv\nlive-config-systemd' "$LIST_FILE"
           fi
@@ -247,13 +247,13 @@ jobs:
             printf '%s\n' 'search --no-floppy --set=root --label RAPTOR-SECURITY'
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live)" {'
-            printf '%s\n' '    linux /live/vmlinuz-* boot=live components quiet'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
-            printf '%s\n' '    linux /live/vmlinuz-* boot=live components noapic noapm nodma nomce nolapic nosmp'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30 noapic noapm nodma nomce nolapic nosmp'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
           } > efi-build/grub.cfg
 

@@ -11,9 +11,6 @@ xfce4
 xfce4-goodies
 lightdm
 
-# --- ISO/hybrid tooling (live-build runs isohybrid inside the chroot) ---
-syslinux-utils
-
 # --- Dashboard & Daemon Runtime ---
 python3-gi
 python3-gi-cairo
@@ -97,7 +94,6 @@ sleuthkit
 firejail
 
 # --- Secure User Applications ---
-librewolf
 torbrowser-launcher
 onionshare
 curl

@@ -40,14 +40,10 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      # Cache that only persists the apt .deb archives (cache/apt_archives),
-      # not live-build STAGE snapshots. Stage snapshots (--cache-stages "") are
-      # disabled because a snapshot saved at the end of a completed build
-      # poisoned the next resume: apt-key aborted on "Couldn't create temporary
-      # file /tmp/apt.conf.*", failing the very first chroot apt-get update.
-      # Every run now bootstraps fresh; the only resume is inert .debs, so
-      # builds are deterministic. Bumped to v6 to evict the poisoned v5
-      # snapshots.
+      # Content-addressed permanent key (matches update.yml's description of
+      # build-iso.yml): restores the stage cache whenever the config sources
+      # are unchanged, and only re-downloads when they change. Bumped to v3 to
+      # wipe any old cache that may have been poisoned with sysvinit packages.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
@@ -127,10 +123,9 @@ jobs:
       # Ubuntu host paths (/usr/lib/ISOLINUX/isolinux.bin etc.). lb_binary_syslinux
       # copies that template into the Debian bookworm build chroot and
       # dereferences the links there, where they dangle — bookworm's syslinux
-      # packages ship NO isolinux.bin at all (only /usr/lib/syslinux/modules/bios/).
-      # Drop REAL syslinux 6.04 binaries taken from the runner into the template
-      # instead of symlinks, so the chrooted copy is self-contained. All three
-      # come from the same syslinux 6.04 build, keeping versions consistent.
+      # packages ship NO isolinux.bin at all. Drop REAL syslinux 6.04 binaries
+      # taken from the runner into the template, so the chrooted copy is
+      # self-contained. All three come from the same syslinux 6.04 build.
       - name: Materialize live-build isolinux template files (real, not symlinks)
         run: |
           set -e
@@ -180,29 +175,16 @@ jobs:
           sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
-          # live-build keeps its own full chroot snapshot in cache/chroot and
-          # resumes from it on the next run. A snapshot taken at the end of a
-          # completed build (after the binary/ISO stage) can leave /tmp in a
-          # state where the very first apt-get update of the chroot stage
-          # fails (apt-key: "Couldn't create temporary file /tmp/apt.conf.*").
-          # Replace it with a clean world-writable sticky dir before restore.
-          if [ -d cache/chroot ]; then
-            sudo rm -rf cache/chroot/tmp
-            sudo mkdir -p cache/chroot/tmp
-            sudo chmod 1777 cache/chroot/tmp
-            sudo chown root:root cache/chroot/tmp
-          fi
 
-      # The image must boot with systemd as PID 1. auto/config explicitly
-      # sets --initsystem systemd (Ubuntu's live-build defaults Debian live
-      # systems to sysvinit, which would make lb_chroot_live-packages try to
-      # install the non-existent live-config-sysvinit). This step additionally
-      # purges sysvinit packages from the lists and pins them out of reach so
-      # neither the stage cache nor a deps change can pull them back in.
+      # The image must boot with systemd as PID 1. A cache from before the v3
+      # bump could contain a sysvinit-tainted chroot, so explicitly purge legacy
+      # init packages from the lists and pin them out of reach so neither a
+      # restored stage cache nor a deps change can pull them back in.
       - name: Hard-ban sysvinit and configure APT
         working-directory: build
         run: |
           set -e
+          sed -i '/--systemd/d' ../auto/config || true
 
           find config/package-lists/ -type f -name "*.list.chroot" -exec sed -i '/^sysvinit-core/d; /^live-config-sysvinit/d; /^initscripts/d; /^orphan-sysvinit-scripts/d' {} + || true
 
@@ -294,12 +276,12 @@ jobs:
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30 noapic noapm nodma nomce nolapic nosmp'
-            printf '%s\n' '    initrd /live/initrd.img-*'
+            printf '%s\n' '    initrd /live/initrd.img'
             printf '%s\n' '}'
           } > efi-build/grub.cfg
 
@@ -353,20 +335,6 @@ jobs:
             xorriso -indev "${ORIGINAL_ISO}.uefi" -report_el_torito plain 2>&1 | grep "El Torito boot img"
             mv "${ORIGINAL_ISO}.uefi" "$ORIGINAL_ISO"
           fi
-
-      # live-build writes the image as binary.hybrid.iso regardless of
-      # project naming; rename it to the product name + build date so the
-      # debug artifact and any release upload carry a meaningful filename.
-      - name: Rename ISO to product name
-        working-directory: build
-        run: |
-          set -e
-          ISO="$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)"
-          DATE="$(date -u +%Y%m%d)"
-          FINAL="raptor-security-${DATE}.iso"
-          mv "$ISO" "$FINAL"
-          echo "Renamed to: $FINAL"
-          ls -lh "$FINAL"
 
       - name: Compute checksum
         working-directory: build

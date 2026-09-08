@@ -5,7 +5,7 @@ ERRORS=0
 
 echo "==> [1/4] Enforcing & Verifying Executable Permissions..."
 chmod +x build/config/includes.chroot/usr/local/bin/* 2>/dev/null || true
-chmod +x build/config/hooks/live/*.hook.chroot 2>/dev/null || true
+chmod +x build/config/hooks/*.hook.chroot 2>/dev/null || true
 
 for script in build/config/includes.chroot/usr/local/bin/*; do
   if [ -f "$script" ] && [ ! -x "$script" ]; then
@@ -14,7 +14,7 @@ for script in build/config/includes.chroot/usr/local/bin/*; do
   fi
 done
 
-for hook in build/config/hooks/live/*.hook.chroot; do
+for hook in build/config/hooks/*.hook.chroot; do
   if [ -f "$hook" ] && [ ! -x "$hook" ]; then
     echo "  [ERROR] Failed to set hook executable bit: $hook"
     ERRORS=$((ERRORS + 1))
