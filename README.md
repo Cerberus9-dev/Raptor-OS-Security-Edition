@@ -54,7 +54,7 @@ At boot, press <kbd>Tab</kbd> on the boot entry and append `persistence` to enab
 
 | Category | Packages |
 |---|---|
-| **Desktop** | XFCE, LightDM autologin, htop |
+| **Desktop** | XFCE (Greybird-dark theme, Whisker menu), LightDM autologin, htop |
 | **Anonymity** | Tor + torsocks, LibreWolf with SOCKS5 proxy (third-party build hook), Stubby DNS-over-TLS, macchanger |
 | **Firewall & Modes** | nftables with 3 bundled profiles (Secure / Hardened / Lockdown), iptables, rfkill killswitch |
 | **Anti-Forensics** | secure-delete (`sdmem` RAM wipe at shutdown), BleachBit, MAT2 |

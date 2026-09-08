@@ -13,6 +13,7 @@ xfce4-whiskermenu-plugin
 lightdm
 lightdm-gtk-greeter
 desktop-base
+greybird-gtk-theme
 
 # --- ISO/hybrid tooling (live-build runs isohybrid inside the chroot) ---
 syslinux-utils
