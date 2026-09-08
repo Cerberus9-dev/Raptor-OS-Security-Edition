@@ -42,13 +42,13 @@ jobs:
 
       # Content-addressed permanent key (matches update.yml's description of
       # build-iso.yml): restores the stage cache whenever the config sources
-      # are unchanged, and only re-downloads when they change. Bumped to v3 to
-      # wipe any old cache that may have been poisoned with sysvinit packages.
+      # are unchanged, and only re-downloads when they change. Bumped to v7 to
+      # evict the poisoned v6 stage snapshots.
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v6-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
+          key: raptor-security-lb-v7-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
@@ -168,13 +168,23 @@ jobs:
       # generated top-level config variable files. Those files are what config/
       # stores after the last lb config; deleting them forces auto/config to
       # regenerate them fresh, so option changes in auto/config take effect.
+      # config/cache is included: `lb config noauto` keeps a stale
+      # LB_CACHE_STAGES otherwise, silently re-enabling stage snapshots that
+      # auto/config disables with --cache-stages "".
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
           sudo rm -rf chroot binary .build
-          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
+          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source config/cache
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
+          # Drop any pre-existing live-build stage snapshots so a poisoned one
+          # (chroot /tmp breaks the first apt-get update: apt-key "Couldn't
+          # create temporary file /tmp/apt.conf.*") can never be restored.
+          # cache/apt_archives (inert .debs) is the only thing kept.
+          for d in bootstrap chroot binary source; do
+            sudo rm -rf "cache/$d"
+          done
 
       # The image must boot with systemd as PID 1. A cache from before the v3
       # bump could contain a sysvinit-tainted chroot, so explicitly purge legacy

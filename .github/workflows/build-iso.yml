@@ -46,13 +46,14 @@ jobs:
       # poisoned the next resume: apt-key aborted on "Couldn't create temporary
       # file /tmp/apt.conf.*", failing the very first chroot apt-get update.
       # Every run now bootstraps fresh; the only resume is inert .debs, so
-      # builds are deterministic. Bumped to v6 to evict the poisoned v5
-      # snapshots.
+      # builds are deterministic. Bumped to v7 to evict poisoned v6 stage
+      # snapshots (an already-failing run saved one under the fresh v6 key and
+      # the next run restored it, re-poisoning the chroot /tmp).
       - name: Cache live-build stages
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: raptor-security-lb-v6-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
+          key: raptor-security-lb-v7-${{ runner.os }}-${{ hashFiles('build/config/package-lists/*.list.chroot', 'build/config/hooks/*', 'auto/config') }}
 
       - name: Free Disk Space
         run: |
@@ -169,29 +170,40 @@ jobs:
             "$LB_FILE"
           sudo sh -n "$LB_FILE" && echo "patched script: valid sh syntax"
 
-      # Removes the previous build tree but keeps cache/, then deletes the five
+      # Removes the previous build tree but keeps cache/, then deletes the
       # generated top-level config variable files. Those files are what config/
       # stores after the last lb config; deleting them forces auto/config to
       # regenerate them fresh, so option changes in auto/config take effect.
+      #
+      # config/cache is deliberately included: `lb config noauto` (auto/config)
+      # does NOT overwrite an existing config/cache, so a stale LB_CACHE_STAGES
+      # from an older build silently re-enables stage snapshots even though
+      # auto/config passes --cache-stages "". A restored stage snapshot is what
+      # poisons the next build's chroot /tmp (apt-key: "Couldn't create
+      # temporary file /tmp/apt.conf.*") — see cache/chroot comment below.
+      # Deleting config/cache here makes --cache-stages "" genuinely take
+      # effect every run.
       - name: Clean previous build artifacts (preserving cache)
         working-directory: build
         run: |
           sudo rm -rf chroot binary .build
-          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
+          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source config/cache
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run, or nothing restored)"
-          # live-build keeps its own full chroot snapshot in cache/chroot and
-          # resumes from it on the next run. A snapshot taken at the end of a
-          # completed build (after the binary/ISO stage) can leave /tmp in a
-          # state where the very first apt-get update of the chroot stage
-          # fails (apt-key: "Couldn't create temporary file /tmp/apt.conf.*").
-          # Replace it with a clean world-writable sticky dir before restore.
-          if [ -d cache/chroot ]; then
-            sudo rm -rf cache/chroot/tmp
-            sudo mkdir -p cache/chroot/tmp
-            sudo chmod 1777 cache/chroot/tmp
-            sudo chown root:root cache/chroot/tmp
-          fi
+          # live-build keeps its own full stage snapshots in cache/{bootstrap,
+          # chroot,binary,source} and resumes from them on the next run. A
+          # snapshot taken at the end of a completed build can leave /tmp in a
+          # state where the very first apt-get update of the chroot stage fails
+          # (apt-key: "Couldn't create temporary file /tmp/apt.conf.*"), and a
+          # mid-failure snapshot poisons the NEXT run the same way — that is
+          # exactly what this run died on. Stage caching is disabled anyway
+          # (--cache-stages ""), but delete any pre-existing snapshots here so
+          # a poisoned one can NEVER be restored, regardless of what flags or
+          # stale config/cache slipped through. cache/apt_archives (inert .debs)
+          # is the only thing kept.
+          for d in bootstrap chroot binary source; do
+            sudo rm -rf "cache/$d"
+          done
 
       # The image must boot with systemd as PID 1. auto/config explicitly
       # sets --initsystem systemd (Ubuntu's live-build defaults Debian live

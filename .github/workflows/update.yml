@@ -151,9 +151,16 @@ jobs:
         working-directory: build
         run: |
           sudo rm -rf chroot binary .build
-          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source
+          sudo rm -f config/bootstrap config/chroot config/binary config/common config/source config/cache
           echo "cache/ contents preserved:"
           du -sh cache 2>/dev/null || echo "cache/ is empty (first run this week, or nothing restored)"
+          # Drop any pre-existing live-build stage snapshots so a poisoned one
+          # (chroot /tmp breaks the first apt-get update: apt-key "Couldn't
+          # create temporary file /tmp/apt.conf.*") can never be restored.
+          # cache/apt_archives (inert .debs) is the only thing kept.
+          for d in bootstrap chroot binary source; do
+            sudo rm -rf "cache/$d"
+          done
 
       # auto/config lives at the repo root; from build/ it is ../auto/config.
       - name: Configure live-build
