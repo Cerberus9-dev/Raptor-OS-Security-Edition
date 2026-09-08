@@ -9,7 +9,10 @@ live-config-systemd
 # --- Base Desktop Environment & Display ---
 xfce4
 xfce4-goodies
+xfce4-whiskermenu-plugin
 lightdm
+lightdm-gtk-greeter
+desktop-base
 
 # --- ISO/hybrid tooling (live-build runs isohybrid inside the chroot) ---
 syslinux-utils
