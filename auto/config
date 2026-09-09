@@ -32,4 +32,4 @@ lb config noauto "${@}" \
     --apt-indices false \
     --apt-recommends true \
     --cache-stages "" \
-    --bootappend-live "boot=live config components ignore_uuid live-media-timeout=30"
+    --bootappend-live "boot=live config components username=user autologin ignore_uuid live-media-timeout=30"

@@ -260,6 +260,29 @@ jobs:
         working-directory: build
         run: sudo lb build
 
+      # Gate the artifact on the payload actually being in the image. The
+      # squashfs is unpacked on the runner (squashfs-tools is installed above)
+      # and the build FAILS if /usr/lib/raptor-security is absent — there is no
+      # way to ship an ISO that silently lost its customization layer again.
+      - name: Assert Raptor payload is packed into the image
+        working-directory: build
+        run: |
+          set -e
+          SQ="binary/live/filesystem.squashfs"
+          [ -f "$SQ" ] || { echo "ERROR: $SQ not found"; ls -la binary/live/ 2>/dev/null; exit 1; }
+          if ! unsquashfs -n -ll "$SQ" 2>/dev/null | grep -q 'raptor-firstboot'; then
+            echo "ERROR: Raptor payload MISSING from the image — includes.chroot did not make it in."
+            echo "Top of squashfs listing for reference:"
+            unsquashfs -n -ll "$SQ" 2>/dev/null | head -20
+            exit 1
+          fi
+          echo "payload OK: raptor-firstboot.sh is in the image"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep -c 'usr/lib/raptor-security' | sed 's/^/raptor-security paths: /'
+          echo "panel config:"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'xfce4-panel.xml' || echo "WARNING: custom panel config absent (default XFCE panel used)"
+          echo "lightdm autologin:"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'lightdm.conf.d/10-raptor-live.conf' || echo "WARNING: lightdm autologin config absent"
+
       - name: Verify ISO
         working-directory: build
         run: |
