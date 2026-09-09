@@ -229,7 +229,8 @@ class NetworkProtectionManager:
     def _ipv6_enabled(self) -> bool:
         rc, out, _ = run(["sysctl", "-n", "net.ipv6.conf.all.disable_ipv6"])
         if rc != 0:
-            # unknown -> assume worst case for a privacy-focused OS: report as NOT enabled
+            # unknown -> assume the worst case for a privacy-focused OS:
+            # IPv6 might be enabled, so report it as enabled.
             return True
         return out.strip() == "0"
 

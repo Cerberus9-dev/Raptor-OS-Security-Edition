@@ -52,10 +52,20 @@ SOCKS_HOST = "127.0.0.1"
 SOCKS_PORT = 9050
 CONTROL_HOST = "127.0.0.1"
 CONTROL_PORT = 9051
-# Debian's tor package default cookie path when RunAsDaemon + CookieAuthentication
-# are set for the default instance. VERIFY against the actual installed tor
-# version/config before relying on this — path has moved across tor releases.
-COOKIE_PATH = Path("/run/tor/control.authcookie")
+# Debian's tor package uses a DataDirectory of /var/lib/tor, and unless a
+# CookieAuthFile is configured the control cookie is written under it
+# (tor's default is `$DataDirectory/control.authcookie`). Some releases
+# instead land it in a runtime directory. Probe the candidates in order so
+# NewIdentity() survives tor releases that move the cookie.
+def _find_control_cookie() -> tuple:
+    for candidate in (
+        Path("/var/lib/tor/control.authcookie"),
+        Path("/run/tor/control.authcookie"),
+        Path("/var/run/tor/control.authcookie"),
+    ):
+        if candidate.exists():
+            return candidate.read_bytes()
+    return b""
 
 
 def run(cmd, check=False, timeout=15):
@@ -137,15 +147,10 @@ class TorManager:
         caller is exactly the kind of overclaim spec section 26 warns
         against for security controls generally.
         """
-        if not COOKIE_PATH.exists():
-            log.error("cookie auth file not found at %s — is ControlPort/"
-                      "CookieAuthentication enabled in torrc?", COOKIE_PATH)
-            return False
-
-        try:
-            cookie_hex = COOKIE_PATH.read_bytes().hex()
-        except OSError as e:
-            log.error("failed to read control auth cookie: %s", e)
+        cookie_hex = _find_control_cookie().hex()
+        if not cookie_hex:
+            log.error("tor control auth cookie not found — is ControlPort/"
+                      "CookieAuthentication enabled in torrc?")
             return False
 
         try:

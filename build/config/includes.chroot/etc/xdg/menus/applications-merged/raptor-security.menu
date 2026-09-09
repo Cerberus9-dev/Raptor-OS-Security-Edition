@@ -29,10 +29,5 @@
       <Directory>raptor-passwords.directory</Directory>
       <Include><Category>X-Raptor-Passwords</Category></Include>
     </Menu>
-    <Menu>
-      <Name>Reverse Engineering</Name>
-      <Directory>raptor-reverse.directory</Directory>
-      <Include><Category>X-Raptor-Reverse</Category></Include>
-    </Menu>
   </Menu>
 </Menu>

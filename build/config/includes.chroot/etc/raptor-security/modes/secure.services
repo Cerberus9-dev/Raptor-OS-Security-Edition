@@ -1,4 +1,6 @@
 # Secure mode service posture — one unit per line, '+' to ensure-started,
 # '-' to ensure-stopped. Read by raptor_mode_managerd._apply_services().
-+ nftables
+# NOTE: nftables must NOT be toggled here — its ExecStart/ExecStop both
+# `nft flush ruleset`, which would wipe the {mode}.nft table loaded just
+# before this step. The firewall is owned by _apply_firewall() only.
 + NetworkManager

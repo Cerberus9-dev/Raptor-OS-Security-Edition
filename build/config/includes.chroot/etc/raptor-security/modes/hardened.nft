@@ -47,6 +47,6 @@ table inet raptor_security {
         # can establish without whitelisting every possible port. This is
         # still far more restrictive than Secure mode's open egress.
         meta l4proto udp accept
-        reject with icmp type port-unreachable
+        reject with icmpx type port-unreachable
     }
 }

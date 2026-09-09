@@ -11,6 +11,10 @@ getent group raptor-admin >/dev/null 2>&1 || groupadd -r raptor-admin
 # from the very start (DHCP/mDNS are explicitly allowed by the ruleset).
 systemctl enable nftables.service
 
+# Kodachi-style ejection watchdog: powers off the machine the moment the
+# live USB the session booted from is physically removed.
+systemctl enable raptor-media-watchdog.service
+
 # Enable the Raptor Security D-Bus daemons the dashboard talks to
 for unit in \
   raptor-mode-manager.service \

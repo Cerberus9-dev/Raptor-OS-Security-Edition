@@ -47,6 +47,13 @@ CURRENT_MODE_FILE = Path("/etc/raptor-security/current-mode")
 RAPTOR_NFT_FAMILY = "inet"
 RAPTOR_NFT_TABLE = "raptor_security"
 
+# The public-IP check opens a Tor SOCKS tunnel and can take seconds when Tor
+# is stalled; the dashboard polls GetStatus() every 5s. Cache the result so
+# a slow tunnel can't block every poll (and thus every SetMode/GetMode) on
+# the single-threaded D-Bus loop.
+_PUBLIC_IP_CACHE = {"ts": 0.0, "ip": "unknown"}
+_PUBLIC_IP_TTL = 30.0
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s raptor-mode-managerd %(levelname)s: %(message)s",
@@ -389,6 +396,9 @@ class ModeManager:
 
     def _check_interfaces(self) -> str:
         # Up + not-loopback physical/wireless interfaces, with their IPs.
+        # `ip -4 -o addr show up` only lists interfaces that are up, so the
+        # reported state is the record itself; each line reads like
+        # `2: eth0    inet 192.168.1.5/24 brd ...`.
         try:
             rc, out, _ = run(
                 ["ip", "-4", "-o", "addr", "show", "up"],
@@ -399,13 +409,9 @@ class ModeManager:
             result = []
             for line in out.splitlines():
                 parts = line.split()
-                iface, state = parts[1], parts[2]
-                if iface == "lo":
+                if len(parts) < 3 or parts[1] == "lo" or parts[2] != "inet":
                     continue
-                if state != "UP":
-                    continue
-                ip = parts[3].split("/")[0] if len(parts) > 3 else ""
-                result.append(f"{iface}:{ip}")
+                result.append(f"{parts[1]}:{parts[3].split('/')[0]}")
             return ", ".join(result) if result else "none"
         except Exception as e:
             log.warning("interfaces check failed: %s", e)
@@ -433,18 +439,29 @@ class ModeManager:
         # Resolve the public IP *through Tor's SOCKS proxy* (127.0.0.1:9050)
         # so this never leaks the machine's clearnet IP. If Tor is down or
         # unreachable, report "unknown" — never fall back to a clearnet
-        # lookup, which would defeat the point of the check.
+        # lookup, which would defeat the point of the check. Cached for
+        # _PUBLIC_IP_TTL seconds so the 5s dashboard poll can't block on it.
         import socket
 
+        now = time.monotonic()
+        if now - _PUBLIC_IP_CACHE["ts"] < _PUBLIC_IP_TTL:
+            return _PUBLIC_IP_CACHE["ip"]
+
         host = "check.torproject.org"
+        ip = "unknown"
         try:
-            with socket.create_connection(("127.0.0.1", 9050), timeout=8) as s:
-                # CONNECT via SOCKS5 with no auth
+            with socket.create_connection(("127.0.0.1", 9050), timeout=5) as s:
+                # SOCKS5 greeting, no auth
                 s.sendall(b"\x05\x01\x00")
                 if s.recv(2) != b"\x05\x00":
                     return "unknown"
-                addr = socket.gethostbyname(host)
-                s.sendall(b"\x05\x01\x00\x01" + socket.inet_aton(addr) + (443).to_bytes(2, "big"))
+                # SOCKS5 CONNECT with DOMAINNAME addressing (type 3): resolve
+                # remotely through Tor, never via clearnet DNS in this process.
+                addr = host.encode()
+                s.sendall(
+                    b"\x05\x01\x00\x03" + bytes([len(addr)]) + addr
+                    + (443).to_bytes(2, "big")
+                )
                 if s.recv(2) != b"\x05\x00":
                     return "unknown"
                 s.recv(4)
@@ -462,16 +479,18 @@ class ModeManager:
                     data += chunk
                 body = data.split(b"\r\n\r\n", 1)[-1] if b"\r\n\r\n" in data else b""
                 payload = json.loads(body.decode(errors="replace"))
-                return payload.get("IP", "unknown")
+                ip = payload.get("IP", "unknown")
         except Exception as e:
             log.warning("public ip via Tor unavailable: %s", e)
-            return "unknown"
+        _PUBLIC_IP_CACHE["ts"] = time.monotonic()
+        _PUBLIC_IP_CACHE["ip"] = ip
+        return ip
 
 
 def main():
     if CURRENT_MODE_FILE.parent.exists() is False:
-        log.error("config root %s missing — is raptor-security package installed?",
-                   CONFIG_ROOT)
+        log.error("config root %s missing — is the raptor-security "
+                   "payload installed?", CURRENT_MODE_FILE.parent)
         sys.exit(1)
 
     bus = SystemBus()

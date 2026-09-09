@@ -267,7 +267,9 @@ class SecurityCenterWindow(Adw.ApplicationWindow):
                 "cannot guarantee no trace remains if swap was used."
             )
 
-        dialog = Adw.AlertDialog(
+        # Adw.AlertDialog only exists in libadwaita >= 1.4; bookworm ships
+        # 1.2, so use Adw.MessageDialog which has the same response API.
+        dialog = Adw.MessageDialog(
             heading="\u26a0 Emergency Shutdown",
             body="\n\n".join(body_lines),
         )
