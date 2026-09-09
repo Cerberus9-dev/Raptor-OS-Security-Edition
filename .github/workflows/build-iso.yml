@@ -67,8 +67,14 @@ jobs:
 
       - name: Install Build Tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          # The ubuntu-24.04 runner image preconfigures its OWN Google-Chrome
+          # apt repo (dl.google.com). Its index downloads are flaky (hash-sum
+          # mismatches that hard-fail `apt-get update`), and nothing in this
+          # build needs Chrome — drop that source up front so a mirror glitch
+          # can't kill the run, and keep retries for the Debian mirrors.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.list.save
+          sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=10
+          sudo apt-get install -y -o Acquire::Retries=5 \
             live-build \
             debootstrap \
           debian-archive-keyring \
