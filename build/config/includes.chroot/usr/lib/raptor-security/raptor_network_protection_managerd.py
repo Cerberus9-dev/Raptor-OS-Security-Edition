@@ -35,8 +35,8 @@ import json
 import logging
 import subprocess
 
-from pydbus import SystemBus
 from gi.repository import GLib
+from pydbus import SystemBus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,7 +47,7 @@ log = logging.getLogger("raptor-network-protection-managerd")
 
 def run(cmd, check=False, timeout=10):
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         if check and proc.returncode != 0:
             log.error("command failed: %s -> rc=%s stderr=%s",
                       " ".join(cmd), proc.returncode, proc.stderr.strip())
@@ -84,12 +84,19 @@ class NetworkProtectionManager:
         ipv4 = self._ipv4_address(active_conn.get("device", "")) if active_conn else ""
         dns_servers = self._dns_servers()
         ipv6_enabled = self._ipv6_enabled()
-        mac_random = self._mac_randomization_state(active_conn.get("device", "")) if active_conn else "unknown"
+        if active_conn:
+            mac_random = self._mac_randomization_state(active_conn.get("device", ""))
+        else:
+            mac_random = "unknown"
 
         return {
             "interfaces": GLib.Variant("as", interfaces),
-            "active_connection_name": GLib.Variant("s", active_conn.get("name", "") if active_conn else ""),
-            "active_device": GLib.Variant("s", active_conn.get("device", "") if active_conn else ""),
+            "active_connection_name": GLib.Variant(
+                "s", active_conn.get("name", "") if active_conn else ""
+            ),
+            "active_device": GLib.Variant(
+                "s", active_conn.get("device", "") if active_conn else ""
+            ),
             "ipv4_address": GLib.Variant("s", ipv4),
             "dns_servers": GLib.Variant("as", dns_servers),
             "ipv6_enabled": GLib.Variant("b", ipv6_enabled),
@@ -146,11 +153,15 @@ class NetworkProtectionManager:
 
     def SetIPv6Enabled(self, enabled: bool) -> bool:
         value = "0" if enabled else "1"  # disable_ipv6: 0 = enabled, 1 = disabled
-        rc, _, err = run(["sysctl", "-w", f"net.ipv6.conf.all.disable_ipv6={value}"], check=True)
+        rc, _, err = run(
+            ["sysctl", "-w", f"net.ipv6.conf.all.disable_ipv6={value}"], check=True
+        )
         if rc != 0:
             log.error("failed to set IPv6 state: %s", err)
             return False
-        rc2, _, err2 = run(["sysctl", "-w", f"net.ipv6.conf.default.disable_ipv6={value}"], check=True)
+        rc2, _, _ = run(
+            ["sysctl", "-w", f"net.ipv6.conf.default.disable_ipv6={value}"], check=True
+        )
         return rc2 == 0
 
     # -- internal checks -------------------------------------------------
@@ -166,7 +177,9 @@ class NetworkProtectionManager:
         return [i.get("ifname", "") for i in data if i.get("ifname") != "lo"]
 
     def _active_connection(self):
-        rc, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"])
+        rc, out, _ = run(
+            ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]
+        )
         if rc != 0:
             return None
         for line in out.splitlines():
@@ -207,8 +220,8 @@ class NetworkProtectionManager:
             except OSError:
                 return []
         servers = []
-        for line in out.splitlines():
-            line = line.strip()
+        for raw_line in out.splitlines():
+            line = raw_line.strip()
             if line.startswith("DNS Servers:"):
                 servers.extend(line.split(":", 1)[1].split())
         return servers
@@ -216,7 +229,8 @@ class NetworkProtectionManager:
     def _ipv6_enabled(self) -> bool:
         rc, out, _ = run(["sysctl", "-n", "net.ipv6.conf.all.disable_ipv6"])
         if rc != 0:
-            return True  # unknown -> assume worst case for a privacy-focused OS: report as NOT enabled
+            # unknown -> assume worst case for a privacy-focused OS: report as NOT enabled
+            return True
         return out.strip() == "0"
 
     def _mac_randomization_state(self, device) -> str:

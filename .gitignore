@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 
+# Local-only linter/editor config (not part of the repo or the ISO)
+.ruff.toml
+.vscode/
+
 # live-build artifacts
 build/cache/
 build/chroot/

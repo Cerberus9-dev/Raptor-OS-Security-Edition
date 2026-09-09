@@ -32,11 +32,10 @@ Methods:
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 
-from pydbus import SystemBus
 from gi.repository import GLib
+from pydbus import SystemBus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +51,7 @@ LUKS_MAPPER_NAME = "raptor_persistence"
 def run(cmd, check=False, timeout=30, input_text=None):
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, input=input_text
+            cmd, capture_output=True, text=True, timeout=timeout, input=input_text, check=False
         )
         if check and proc.returncode != 0:
             log.error("command failed: %s -> rc=%s stderr=%s",

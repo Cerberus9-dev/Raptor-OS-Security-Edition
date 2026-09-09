@@ -30,16 +30,16 @@ last SetMode() call and nothing is assumed. If a check itself fails, the
 corresponding field is the string "unknown", never a guessed "ok" value.
 """
 
-import subprocess
 import json
 import logging
+import subprocess
 import sys
 import time
 from pathlib import Path
 
+from gi.repository import GLib
 from pydbus import SystemBus
 from pydbus.generic import signal
-from gi.repository import GLib
 
 MODES = ("secure", "hardened", "lockdown")
 CONFIG_ROOT = Path("/etc/raptor-security/modes")
@@ -59,7 +59,7 @@ def run(cmd, check=True, timeout=10):
     on a non-zero exit unless check=True and the caller wants that."""
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
         )
         if check and proc.returncode != 0:
             log.warning("command failed: %s -> rc=%s stderr=%s",
@@ -163,8 +163,8 @@ class ModeManager:
             return True
 
         ok = True
-        for line in services_file.read_text().splitlines():
-            line = line.strip()
+        for raw_line in services_file.read_text().splitlines():
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
             action, unit = line[0], line[1:].strip()
@@ -231,7 +231,10 @@ class ModeManager:
         # would false-positive on Secure/Hardened mode, since their
         # `forward` chain is also policy drop by design — only `output`
         # distinguishes Lockdown's real kill switch from the others.
-        rc, out, _ = run(["nft", "-j", "list", "table", RAPTOR_NFT_FAMILY, RAPTOR_NFT_TABLE], check=False)
+        rc, out, _ = run(
+            ["nft", "-j", "list", "table", RAPTOR_NFT_FAMILY, RAPTOR_NFT_TABLE],
+            check=False,
+        )
         if rc != 0:
             return "unknown"
         try:
@@ -258,7 +261,7 @@ class ModeManager:
         return "disconnected"
 
     def _check_tor(self) -> str:
-        rc, out, _ = run(["systemctl", "is-active", "tor@default"], check=False)
+        _, out, _ = run(["systemctl", "is-active", "tor@default"], check=False)
         return "active" if out.strip() == "active" else "inactive"
 
     def _check_mac_randomization(self) -> str:
@@ -272,7 +275,7 @@ class ModeManager:
         return "enabled" if "random" in out.lower() or "stable" in out.lower() else "disabled"
 
     def _check_persistence(self) -> str:
-        rc, out, _ = run(["findmnt", "-n", "/lib/live/mount/persistence"], check=False)
+        rc, _, _ = run(["findmnt", "-n", "/lib/live/mount/persistence"], check=False)
         return "encrypted_active" if rc == 0 else "none"
 
     # -- system/network overview -------------------------------------------
@@ -363,7 +366,7 @@ class ModeManager:
             if rc != 0:
                 return "unknown"
             rows = out.splitlines()
-            _, total, used, _, _, _ = rows[1].split()
+            _, _, used, _, _, _ = rows[1].split()
             return f"{int(used) / (1 << 30):.1f}"
         except Exception as e:
             log.warning("disk used check failed: %s", e)
@@ -416,7 +419,11 @@ class ModeManager:
             )
             if rc != 0:
                 return "unknown"
-            servers = [l.split(":")[-1] for l in out.splitlines() if l.startswith("IP4.DNS:")]
+            servers = [
+                entry.split(":")[-1]
+                for entry in out.splitlines()
+                if entry.startswith("IP4.DNS:")
+            ]
             return ", ".join(servers) if servers else "unknown"
         except Exception as e:
             log.warning("dns check failed: %s", e)
@@ -427,10 +434,9 @@ class ModeManager:
         # so this never leaks the machine's clearnet IP. If Tor is down or
         # unreachable, report "unknown" — never fall back to a clearnet
         # lookup, which would defeat the point of the check.
-        import base64
         import socket
 
-        host, port = "check.torproject.org", 443
+        host = "check.torproject.org"
         try:
             with socket.create_connection(("127.0.0.1", 9050), timeout=8) as s:
                 # CONNECT via SOCKS5 with no auth

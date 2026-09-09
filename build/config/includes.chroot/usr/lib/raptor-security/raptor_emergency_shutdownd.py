@@ -35,10 +35,9 @@ client-side in the GUI before this method is ever called.
 
 import logging
 import subprocess
-import sys
 
-from pydbus import SystemBus
 from gi.repository import GLib
+from pydbus import SystemBus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +51,7 @@ PERSISTENCE_MOUNT = "/lib/live/mount/persistence"
 
 def run(cmd, check=False, timeout=10):
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         return proc.returncode, proc.stdout, proc.stderr
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         return 1, "", str(e)

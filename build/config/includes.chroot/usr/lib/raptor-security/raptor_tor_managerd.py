@@ -38,8 +38,8 @@ import socket
 import subprocess
 from pathlib import Path
 
-from pydbus import SystemBus
 from gi.repository import GLib
+from pydbus import SystemBus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,7 +60,7 @@ COOKIE_PATH = Path("/run/tor/control.authcookie")
 
 def run(cmd, check=False, timeout=15):
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         if check and proc.returncode != 0:
             log.error("command failed: %s -> rc=%s stderr=%s",
                       " ".join(cmd), proc.returncode, proc.stderr.strip())
@@ -98,14 +98,16 @@ class TorManager:
     """
 
     def GetStatus(self):
-        rc, out, _ = run(["systemctl", "is-active", TOR_UNIT])
+        _, out, _ = run(["systemctl", "is-active", TOR_UNIT])
         service_active = out.strip() == "active"
         socks_listening = check_port_listening(SOCKS_HOST, SOCKS_PORT) if service_active else False
 
         return {
             "service_active": GLib.Variant("b", service_active),
             "socks_listening": GLib.Variant("b", socks_listening),
-            "socks_address": GLib.Variant("s", f"{SOCKS_HOST}:{SOCKS_PORT}" if socks_listening else ""),
+            "socks_address": GLib.Variant(
+                "s", f"{SOCKS_HOST}:{SOCKS_PORT}" if socks_listening else ""
+            ),
             "circuit_status": GLib.Variant("s", "unknown"),
             # ^ deliberately not "active" — see module docstring. A GUI
             # should render this field distinctly from a true/false state,

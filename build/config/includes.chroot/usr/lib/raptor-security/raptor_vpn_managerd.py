@@ -39,12 +39,11 @@ force the interface name to tun0/wg0 via NetworkManager's
 `interface-name` connection setting. Not deciding that trade-off here.
 """
 
-import json
 import logging
 import subprocess
 
-from pydbus import SystemBus
 from gi.repository import GLib
+from pydbus import SystemBus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,7 +56,7 @@ VPN_TYPES = ("vpn", "wireguard")
 
 def run(cmd, check=False, timeout=30):
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         if check and proc.returncode != 0:
             log.error("command failed: %s -> rc=%s stderr=%s",
                       " ".join(cmd), proc.returncode, proc.stderr.strip())
