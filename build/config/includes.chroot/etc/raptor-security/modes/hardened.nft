@@ -5,6 +5,9 @@ table inet raptor_security {
         type filter hook input priority filter; policy drop;
         iifname "lo" accept
         ct state established,related accept
+        udp dport 67-68 accept
+        udp dport 546-547 accept
+        udp dport 5353 accept
         meta l4proto icmp accept
     }
 
