@@ -267,6 +267,18 @@ jobs:
           sudo chmod -R a+rwX binary "$ORIGINAL_ISO"
 
           mkdir -p efi-build
+
+          # Resolve the real initramfs name so grub.cfg points at a file that
+          # exists (live-build names it initrd.img or initrd.img-<kver>). A
+          # wrong name boots the kernel with no initramfs and panics with
+          # "VFS: Unable to mount root fs on unknown-block(0,0)".
+          INITRD_NAME="$(ls binary/live/initrd.img* 2>/dev/null | sed 's#^binary/##' | head -1 || true)"
+          if [ -z "$INITRD_NAME" ]; then
+            echo "ERROR: no initramfs found under binary/live/ — the ISO would be unbootable" >&2
+            ls -la binary/live/ 2>/dev/null || ls -la binary/ || true
+            exit 1
+          fi
+          echo "Using initrd: /$INITRD_NAME"
           {
             printf '%s\n' 'insmod part_gpt'
             printf '%s\n' 'insmod part_msdos'
@@ -286,12 +298,12 @@ jobs:
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30'
-            printf '%s\n' '    initrd /live/initrd.img'
+            printf '%s\n' "    initrd /$INITRD_NAME"
             printf '%s\n' '}'
             printf '\n'
             printf '%s\n' 'menuentry "Raptor Security (Live, fail-safe)" {'
             printf '%s\n' '    linux /live/vmlinuz boot=live config components quiet ignore_uuid live-media-timeout=30 noapic noapm nodma nomce nolapic nosmp'
-            printf '%s\n' '    initrd /live/initrd.img'
+            printf '%s\n' "    initrd /$INITRD_NAME"
             printf '%s\n' '}'
           } > efi-build/grub.cfg
 
