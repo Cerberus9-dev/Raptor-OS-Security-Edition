@@ -17,7 +17,7 @@ live-boot-initramfs-tools
 # --- Base Desktop Environment & Display ---
 xfce4
 xfce4-goodies
-greybird
+greybird-gtk-theme
 lightdm
 lightdm-gtk-greeter
 
