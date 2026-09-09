@@ -6,6 +6,14 @@
 systemd-sysv
 live-config-systemd
 
+# --- Live Boot (required in the initramfs) ---
+# Without live-boot / live-boot-initramfs-tools the initramfs has no live
+# logic, so `boot=live` is ignored and the kernel panics at boot with
+# "VFS: Unable to mount root fs on unknown-block(0,0)". These two ship the
+# initramfs hook that finds /live/filesystem.squashfs on the medium.
+live-boot
+live-boot-initramfs-tools
+
 # --- Base Desktop Environment & Display ---
 xfce4
 xfce4-goodies
