@@ -286,8 +286,14 @@ jobs:
           unsquashfs -n -ll "$SQ" 2>/dev/null | grep -c 'usr/lib/raptor-security' | sed 's/^/raptor-security paths: /'
           echo "panel config:"
           unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'xfce4-panel.xml' || echo "WARNING: custom panel config absent (default XFCE panel used)"
+          echo "system-wide (xdg) xfce defaults:"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep -E 'etc/xdg/xfce4/xfconf/xfce-perchannel-xml/(xfce4-panel|xfce4-desktop|xsettings)\.xml' || echo "WARNING: /etc/xdg xfce defaults absent — desktop may fall back to Debian defaults"
+          echo "wallpaper:"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'backgrounds/raptor-dark.png' || echo "WARNING: custom wallpaper absent"
           echo "lightdm autologin:"
-          unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'lightdm.conf.d/10-raptor-live.conf' || echo "WARNING: lightdm autologin config absent"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep 'lightdm.conf.d/80-raptor-autologin.conf' || echo "WARNING: lightdm autologin config absent"
+          echo "boot report instrumentation:"
+          unsquashfs -n -ll "$SQ" 2>/dev/null | grep -E 'raptor-boot-report(\.sh|\.desktop)' || echo "WARNING: boot report instrument not found"
 
       - name: Verify ISO
         working-directory: build
